@@ -51,7 +51,7 @@ message = :crypto.hash(:sha256, "Joint Account Authorization")
 # Each participant generates a nonce
 participants_with_nonces = Enum.map(participants, fn p ->
   {:ok, secnonce, pubnonce} = MuSig.nonce_gen(p.seckey, p.pubkey, message, keyagg_cache, nil)
-  
+
   p
   |> Map.put(:secnonce, secnonce) # KEEP SECRET!
   |> Map.put(:pubnonce, pubnonce) # Share this
@@ -103,7 +103,7 @@ is_valid = Secp256k1.schnorr_valid?(final_signature, message, agg_xonly_pubkey)
 ## Security Considerations
 
 1.  **Nonce Reuse**: NEVER reuse nonces. The `nonce_gen` function uses randomness and the message to protect against this, but you must ensure that a fresh `nonce_gen` call is made for every signature attempt. Reusing a nonce with the same key leaks the secret key.
-2.  **Round Communication**: MuSig2 is a 2-round protocol. 
+2.  **Round Communication**: MuSig2 is a 2-round protocol.
     - Round 1: Exchange public nonces.
     - Round 2: Exchange partial signatures.
     - All public nonces must be received before signing (Round 2) begins.

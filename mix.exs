@@ -50,7 +50,7 @@ defmodule Secp256k1.MixProject do
       # Development
       {:ex_check, "~> 0.16", only: [:dev], runtime: false},
       {:credo, "~> 1.7", only: [:dev], runtime: false},
-      {:ex_doc, "~> 0.39", only: [:dev], runtime: false},
+      {:ex_doc, "~> 0.40", only: [:dev], runtime: false},
       {:mix_audit, "~> 2.1", only: [:dev], runtime: false},
       {:mix_test_watch, "~> 1.4", only: [:dev], runtime: false}
     ]
