@@ -52,7 +52,12 @@ error_result(ErlNifEnv *env, char *error_msg)
   ErlNifBinary bin;
   size_t len = strlen(error_msg);
   
-  enif_alloc_binary(len, &bin);
+  if (!enif_alloc_binary(len, &bin)) {
+    return enif_make_tuple2(env,
+      enif_make_atom(env, "error"),
+      enif_make_atom(env, "allocation_failed")
+    );
+  }
   memcpy(bin.data, error_msg, len);
   
   return enif_make_tuple2(env, enif_make_atom(env, "error"), enif_make_binary(env, &bin));

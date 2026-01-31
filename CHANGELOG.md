@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.7.1 (2026-01-31)
+
+- Fixed unchecked `enif_alloc_binary()` return values that could cause undefined behavior under memory pressure
+- Fixed memory leaks on error paths in MuSig2 NIFs
+
 ## v0.7.0 (2025-11-22)
 
 - Added experimental support for MuSig2 multi-signatures
