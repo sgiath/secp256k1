@@ -40,6 +40,31 @@ musig_load(ErlNifEnv *env, void **priv, ERL_NIF_TERM load_info)
   return 0;
 }
 
+static int
+musig_upgrade(ErlNifEnv *env, void **priv, void **old_priv, ERL_NIF_TERM load_info)
+{
+  if (upgrade(env, priv, old_priv, load_info) != 0) {
+    return -1;
+  }
+
+  secnonce_resource_type = enif_open_resource_type(
+    env,
+    NULL,
+    "secnonce_resource",
+    destruct_secnonce,
+    ERL_NIF_RT_TAKEOVER,
+    NULL
+  );
+
+  if (!secnonce_resource_type) {
+    secp256k1_context_destroy(ctx);
+    ctx = NULL;
+    return -1;
+  }
+
+  return 0;
+}
+
 static ERL_NIF_TERM
 pubkey_agg(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
@@ -610,4 +635,4 @@ static ErlNifFunc nif_funcs[] = {
   {"partial_sig_agg", 2, partial_sig_agg}
 };
 
-ERL_NIF_INIT(Elixir.Secp256k1.MuSig, nif_funcs, &musig_load, NULL, &upgrade, &unload)
+ERL_NIF_INIT(Elixir.Secp256k1.MuSig, nif_funcs, &musig_load, NULL, &musig_upgrade, &unload)

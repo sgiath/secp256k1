@@ -9,7 +9,7 @@ MAKE := $(MAKE)
 # --- Directories ---
 TARGET_DIR := ./priv
 SRC_DIR := ./c_src
-LIB_SRC_DIR = $(SRC_DIR)/secp256k1
+LIB_SRC_DIR := $(SRC_DIR)/secp256k1
 LIB_BUILD_DIR := $(LIB_SRC_DIR)/.libs
 LIB_STATIC_LIB := $(LIB_BUILD_DIR)/libsecp256k1.a
 

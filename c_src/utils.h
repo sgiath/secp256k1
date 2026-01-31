@@ -47,6 +47,28 @@ load(ErlNifEnv *env, void **priv, ERL_NIF_TERM load_info)
 static int
 upgrade(ErlNifEnv *env, void **priv, void **old_priv, ERL_NIF_TERM load_info)
 {
+  int return_val;
+  unsigned char randomize[32];
+
+  ctx = secp256k1_context_create(SECP256K1_CONTEXT_NONE);
+  if (!ctx) {
+    return -1;
+  }
+
+  if (!fill_random(randomize, sizeof(randomize))) {
+    secp256k1_context_destroy(ctx);
+    ctx = NULL;
+    return -1;
+  }
+
+  return_val = secp256k1_context_randomize(ctx, randomize);
+  secure_erase(randomize, sizeof(randomize));
+  if (!return_val) {
+    secp256k1_context_destroy(ctx);
+    ctx = NULL;
+    return -1;
+  }
+
   return 0;
 }
 
