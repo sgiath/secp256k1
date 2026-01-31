@@ -3,6 +3,10 @@
 #include <string.h>
 #include <assert.h>
 
+#if defined(_MSC_VER)
+#include <Windows.h>
+#endif
+
 #include "random.h"
 
 static secp256k1_context *ctx = NULL;
@@ -10,11 +14,15 @@ static secp256k1_context *ctx = NULL;
 static void
 secure_erase(void *ptr, size_t len)
 {
-  volatile unsigned char *p = (volatile unsigned char *)ptr;
-  while (len--)
-  {
-    *p++ = 0;
-  }
+#if defined(_MSC_VER)
+  SecureZeroMemory(ptr, len);
+#elif defined(__GNUC__)
+  memset(ptr, 0, len);
+  __asm__ __volatile__("" : : "r"(ptr) : "memory");
+#else
+  void *(*volatile const volatile_memset)(void *, int, size_t) = memset;
+  volatile_memset(ptr, 0, len);
+#endif
 }
 
 static int

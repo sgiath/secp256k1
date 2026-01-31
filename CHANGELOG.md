@@ -4,6 +4,7 @@
 
 - Fixed unchecked `enif_alloc_binary()` return values that could cause undefined behavior under memory pressure
 - Fixed memory leaks on error paths in MuSig2 NIFs
+- Hardened `secure_erase` to use memory barriers, preventing compiler optimization of secret wiping
 
 ## v0.7.0 (2025-11-22)
 
