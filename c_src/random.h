@@ -1,3 +1,6 @@
+#ifndef SECP256K1_NIF_RANDOM_H
+#define SECP256K1_NIF_RANDOM_H
+
 #if defined(_WIN32)
 #include <windows.h>
 #include <ntstatus.h>
@@ -10,6 +13,8 @@
 #else
 #error "Couldn't identify the OS"
 #endif
+
+#endif /* SECP256K1_NIF_RANDOM_H */
 
 /* Returns 1 on success, and 0 on failure. */
 static int fill_random(unsigned char *data, size_t size)

@@ -1,3 +1,6 @@
+#ifndef SECP256K1_NIF_UTILS_H
+#define SECP256K1_NIF_UTILS_H
+
 #include <erl_nif.h>
 #include <secp256k1.h>
 #include <string.h>
@@ -59,7 +62,7 @@ error_result(ErlNifEnv *env, char *error_msg)
 {
   ErlNifBinary bin;
   size_t len = strlen(error_msg);
-  
+
   if (!enif_alloc_binary(len, &bin)) {
     return enif_make_tuple2(env,
       enif_make_atom(env, "error"),
@@ -67,12 +70,8 @@ error_result(ErlNifEnv *env, char *error_msg)
     );
   }
   memcpy(bin.data, error_msg, len);
-  
+
   return enif_make_tuple2(env, enif_make_atom(env, "error"), enif_make_binary(env, &bin));
 }
 
-/*static ERL_NIF_TERM*/
-/*ok_result(ErlNifEnv *env, ERL_NIF_TERM *r)*/
-/*{*/
-/*  return enif_make_tuple2(env, enif_make_atom(env, "ok"), *r);*/
-/*}*/
+#endif /* SECP256K1_NIF_UTILS_H */
