@@ -5,6 +5,8 @@
 static ERL_NIF_TERM
 compressed_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  (void)argc;
+
   ERL_NIF_TERM result;
   ErlNifBinary seckey;
 
@@ -46,6 +48,8 @@ compressed_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 uncompressed_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  (void)argc;
+
   ERL_NIF_TERM result;
   ErlNifBinary seckey;
 
@@ -87,6 +91,8 @@ uncompressed_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 compress_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  (void)argc;
+
   ERL_NIF_TERM result;
   ErlNifBinary input;
 
@@ -128,6 +134,8 @@ compress_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 decompress_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  (void)argc;
+
   ERL_NIF_TERM result;
   ErlNifBinary input;
 
@@ -169,6 +177,8 @@ decompress_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 sign(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  (void)argc;
+
   ERL_NIF_TERM result;
   ErlNifBinary msg_hash, seckey, auxiliary_rand;
 
@@ -222,6 +232,8 @@ sign(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 verify(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  (void)argc;
+
   ErlNifBinary serialized_sig, msg_hash, serialized_pubkey;
 
   secp256k1_ecdsa_signature sig;

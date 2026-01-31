@@ -68,6 +68,8 @@ musig_upgrade(ErlNifEnv *env, void **priv, void **old_priv, ERL_NIF_TERM load_in
 static ERL_NIF_TERM
 pubkey_agg(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  (void)argc;
+
   ERL_NIF_TERM head, tail, list = argv[0];
   unsigned int n_pubkeys;
   secp256k1_pubkey *pubkeys;
@@ -150,6 +152,8 @@ bad_arg:
 static ERL_NIF_TERM
 pubkey_get(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  (void)argc;
+
   ErlNifBinary bin_cache;
   secp256k1_musig_keyagg_cache cache;
   secp256k1_pubkey agg_pk;
@@ -184,6 +188,8 @@ pubkey_get(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 pubkey_ec_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  (void)argc;
+
   ErlNifBinary bin_cache, bin_tweak;
   secp256k1_musig_keyagg_cache cache;
   secp256k1_pubkey output_pk;
@@ -232,6 +238,8 @@ pubkey_ec_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 pubkey_xonly_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  (void)argc;
+
   ErlNifBinary bin_cache, bin_tweak;
   secp256k1_musig_keyagg_cache cache;
   secp256k1_pubkey output_pk;
@@ -280,6 +288,8 @@ pubkey_xonly_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nonce_gen(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  (void)argc;
+
   ErlNifBinary bin_seckey, bin_pubkey, bin_msg, bin_cache, bin_extra;
   secp256k1_musig_secnonce secnonce;
   secp256k1_musig_pubnonce pubnonce;
@@ -366,6 +376,8 @@ nonce_gen(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nonce_agg(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  (void)argc;
+
   ERL_NIF_TERM head, tail, list = argv[0];
   unsigned int n_nonces;
   secp256k1_musig_pubnonce *nonces;
@@ -428,6 +440,8 @@ bad_arg:
 static ERL_NIF_TERM
 nonce_process(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  (void)argc;
+
   ErlNifBinary bin_aggnonce, bin_msg, bin_cache;
   secp256k1_musig_aggnonce aggnonce;
   secp256k1_musig_keyagg_cache cache;
@@ -464,6 +478,8 @@ nonce_process(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 partial_sign(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  (void)argc;
+
   secnonce_wrapper *wrapper;
   ErlNifBinary bin_seckey, bin_cache, bin_session;
   secp256k1_keypair keypair;
@@ -521,6 +537,8 @@ partial_sign(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 partial_sig_verify(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  (void)argc;
+
   ErlNifBinary bin_psig, bin_pubnonce, bin_pubkey, bin_cache, bin_session;
   secp256k1_musig_partial_sig partial_sig;
   secp256k1_musig_pubnonce pubnonce;
@@ -559,6 +577,8 @@ partial_sig_verify(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 partial_sig_agg(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  (void)argc;
+
   ERL_NIF_TERM head, tail, list = argv[1];
   ErlNifBinary bin_session;
   secp256k1_musig_session session;

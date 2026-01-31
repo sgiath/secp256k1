@@ -7,6 +7,8 @@
 static ERL_NIF_TERM
 ecdh(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  (void)argc;
+
   ERL_NIF_TERM result;
   ErlNifBinary seckey;
   ErlNifBinary pubkey;

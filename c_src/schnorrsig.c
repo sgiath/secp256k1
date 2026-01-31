@@ -9,6 +9,8 @@
 static ERL_NIF_TERM
 sign32(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  (void)argc;
+
   ERL_NIF_TERM result;
   ErlNifBinary message, seckey, auxiliary_rand;
 
@@ -63,6 +65,8 @@ sign32(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 sign_custom(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  (void)argc;
+
   ERL_NIF_TERM result;
   ErlNifBinary message, seckey, auxiliary_rand;
 
@@ -116,6 +120,8 @@ sign_custom(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 verify(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  (void)argc;
+
   ErlNifBinary signature, message, pubkey;
 
   secp256k1_xonly_pubkey xonly_pubkey;
