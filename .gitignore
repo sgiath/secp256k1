@@ -30,3 +30,5 @@ secp256k1-*.tar
 
 # 3rd party library
 /c_src/secp256k1/
+
+/TODO.md

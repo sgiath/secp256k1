@@ -78,7 +78,8 @@ defmodule Secp256k1.MixProject do
         "README.md": [filename: "readme", title: "Overview"],
         "docs/usage.md": [filename: "usage", title: "Usage Guide"],
         "docs/musig.md": [filename: "musig", title: "MuSig Guide"],
-        "CHANGELOG.md": [filename: "changelog", title: "Changelog"]
+        "CHANGELOG.md": [filename: "changelog", title: "Changelog"],
+        LICENSE: [filename: "license", title: "License"]
       ],
       formatters: ["html"],
       source_ref: "v#{@version}",
