@@ -6,6 +6,7 @@
 - Fixed memory leaks on error paths in MuSig2 NIFs
 - Hardened `secure_erase` to use memory barriers, preventing compiler optimization of secret wiping
 - Fixed NIF hot upgrade support: context is now properly initialized and MuSig resource types are taken over
+- Upgrade lib to version v0.7.1
 
 ## v0.7.0 (2025-11-22)
 
