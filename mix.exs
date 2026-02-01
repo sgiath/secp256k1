@@ -60,7 +60,7 @@ defmodule Secp256k1.MixProject do
     [
       name: "lib_secp256k1",
       maintainers: ["Sgiath <secp256k1@sgiath.dev>"],
-      files: ~w(lib LICENSE mix.exs README* CHANGELOG* c_src/*.[ch] Makefile),
+      files: ~w(lib LICENSE mix.exs README* CHANGELOG* c_src/*.[ch] Makefile usage-rules.md),
       licenses: ["WTFPL"],
       links: %{
         "C library" => "https://github.com/bitcoin-core/secp256k1",
