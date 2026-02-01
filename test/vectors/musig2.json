@@ -1,0 +1,188 @@
+{
+  "source": "c_src/secp256k1/src/modules/musig/vectors.h",
+  "key_agg": {
+    "pubkeys": [
+      "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+      "03dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+      "023590a94e768f8e1815c2f24b4d80a8e3149316c3518ce7b7ad338368d038ca66",
+      "020000000000000000000000000000000000000000000000000000000000000005",
+      "02fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc30",
+      "04f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+      "03935f972da013f80ae011890fa89b67a27b7be6ccb24d3274d18b2d4067f261a9"
+    ],
+    "tweaks": [
+      "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141",
+      "252e4bd67410a76cdf933d30eaa1608214037f1b105a013eccd3c5c184a6110b"
+    ],
+    "valid": [
+      {
+        "key_indices_len": 3,
+        "key_indices": [
+          0,
+          1,
+          2
+        ],
+        "expected": "90539eede565f5d054f32cc0c220126889ed1e5d193baf15aef344fe59d4610c"
+      },
+      {
+        "key_indices_len": 3,
+        "key_indices": [
+          2,
+          1,
+          0
+        ],
+        "expected": "6204de8b083426dc6eaf9502d27024d53fc826bf7d2012148a0575435df54b2b"
+      },
+      {
+        "key_indices_len": 3,
+        "key_indices": [
+          0,
+          0,
+          0
+        ],
+        "expected": "b436e3bad62b8cd409969a224731c193d051162d8c5ae8b109306127da3aa935"
+      },
+      {
+        "key_indices_len": 4,
+        "key_indices": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "expected": "69bc22bfa5d106306e48a20679de1d7389386124d07571d0d872686028c26a3e"
+      }
+    ],
+    "invalid": [
+      {
+        "key_indices_len": 2,
+        "key_indices": [
+          0,
+          3
+        ],
+        "tweak_indices_len": 0,
+        "tweak_indices": [
+          0
+        ],
+        "is_xonly": [
+          0
+        ],
+        "error": "MUSIG_PUBKEY"
+      },
+      {
+        "key_indices_len": 2,
+        "key_indices": [
+          0,
+          4
+        ],
+        "tweak_indices_len": 0,
+        "tweak_indices": [
+          0
+        ],
+        "is_xonly": [
+          0
+        ],
+        "error": "MUSIG_PUBKEY"
+      },
+      {
+        "key_indices_len": 2,
+        "key_indices": [
+          5,
+          0
+        ],
+        "tweak_indices_len": 0,
+        "tweak_indices": [
+          0
+        ],
+        "is_xonly": [
+          0
+        ],
+        "error": "MUSIG_PUBKEY"
+      },
+      {
+        "key_indices_len": 2,
+        "key_indices": [
+          0,
+          1
+        ],
+        "tweak_indices_len": 1,
+        "tweak_indices": [
+          0
+        ],
+        "is_xonly": [
+          1
+        ],
+        "error": "MUSIG_TWEAK"
+      },
+      {
+        "key_indices_len": 1,
+        "key_indices": [
+          6
+        ],
+        "tweak_indices_len": 1,
+        "tweak_indices": [
+          1
+        ],
+        "is_xonly": [
+          0
+        ],
+        "error": "MUSIG_TWEAK"
+      }
+    ]
+  },
+  "nonce_agg": {
+    "pubnonces": [
+      "020151c80f435648df67a22b749cd798ce54e0321d034b92b709b567d60a42e66603ba47fbc1834437b3212e89a84d8425e7bf12e0245d98262268ebdcb385d50641",
+      "03ff406ffd8adb9cd29877e4985014f66a59f6cd01c0e88caa8e5f3166b1f676a60248c264cdd57d3c24d79990b0f865674eb62a0f9018277a95011b41bfc193b833",
+      "020151c80f435648df67a22b749cd798ce54e0321d034b92b709b567d60a42e6660279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "03ff406ffd8adb9cd29877e4985014f66a59f6cd01c0e88caa8e5f3166b1f676a60379be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "04ff406ffd8adb9cd29877e4985014f66a59f6cd01c0e88caa8e5f3166b1f676a60248c264cdd57d3c24d79990b0f865674eb62a0f9018277a95011b41bfc193b833",
+      "03ff406ffd8adb9cd29877e4985014f66a59f6cd01c0e88caa8e5f3166b1f676a60248c264cdd57d3c24d79990b0f865674eb62a0f9018277a95011b41bfc193b831",
+      "03ff406ffd8adb9cd29877e4985014f66a59f6cd01c0e88caa8e5f3166b1f676a602fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc30"
+    ],
+    "valid": [
+      {
+        "pnonce_indices": [
+          0,
+          1
+        ],
+        "expected": "035fe1873b4f2967f52fea4a06ad5a8eccbe9d0fd73068012c894e2e87ccb5804b024725377345bde0e9c33af3c43c0a29a9249f2f2956fa8cfeb55c8573d0262dc8",
+        "invalid_nonce_idx": 0
+      },
+      {
+        "pnonce_indices": [
+          2,
+          3
+        ],
+        "expected": "035fe1873b4f2967f52fea4a06ad5a8eccbe9d0fd73068012c894e2e87ccb5804b000000000000000000000000000000000000000000000000000000000000000000",
+        "invalid_nonce_idx": 0
+      }
+    ],
+    "invalid": [
+      {
+        "pnonce_indices": [
+          0,
+          4
+        ],
+        "expected": "",
+        "invalid_nonce_idx": 1
+      },
+      {
+        "pnonce_indices": [
+          5,
+          1
+        ],
+        "expected": "",
+        "invalid_nonce_idx": 0
+      },
+      {
+        "pnonce_indices": [
+          6,
+          1
+        ],
+        "expected": "",
+        "invalid_nonce_idx": 0
+      }
+    ]
+  }
+}
