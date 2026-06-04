@@ -10,6 +10,8 @@ MuSig2 (BIP-327) is a multi-signature scheme that allows multiple parties to agg
 - **Partial Signing**: Each signer creates a partial signature using their secret key, secret nonce, and the aggregate nonce.
 - **Signature Aggregation**: Combining partial signatures into the final valid Schnorr signature.
 
+`keyagg_cache`, `session`, and `secnonce` values returned by this library are process-local NIF resources. They are not serialized binaries, cannot be stored or sent to another BEAM instance, and must be recreated for each signing process. Public nonces, aggregate nonces, partial signatures, and final signatures are serialized binaries.
+
 ## Example: 3-of-3 Signing Session
 
 In this example, 3 parties (Alice, Bob, and Carol) want to sign a message together. MuSig2 is an n-of-n scheme relative to the aggregated key, meaning all parties whose keys were aggregated must participate to produce a valid signature.
@@ -39,6 +41,7 @@ alias Secp256k1.MuSig
 {:ok, agg_xonly_pubkey, keyagg_cache} = MuSig.pubkey_agg(participant_pubkeys)
 
 # agg_xonly_pubkey is the 32-byte public key that verifies the final signature
+# keyagg_cache is a process-local resource used by later MuSig calls
 ```
 
 ### 3. Nonce Generation & Exchange
@@ -71,6 +74,7 @@ aggnonce = MuSig.nonce_agg(pubnonces)
 
 # Create the signing session (processes the aggregate nonce)
 session = MuSig.nonce_process(aggnonce, message, keyagg_cache)
+# session is also a process-local resource
 ```
 
 ### 5. Partial Signing

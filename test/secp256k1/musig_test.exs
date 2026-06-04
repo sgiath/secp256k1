@@ -3,6 +3,7 @@ defmodule Secp256k1.MuSigTest do
 
   alias Secp256k1.MuSig
   alias Secp256k1.Schnorr
+  alias Secp256k1Test.MuSigSubprocess
 
   test "3-of-3 signing flow" do
     msg = :crypto.strong_rand_bytes(32)
@@ -19,6 +20,7 @@ defmodule Secp256k1.MuSigTest do
     # 2. Aggregate public keys
     {:ok, agg_xonly_pubkey, cache} = MuSig.pubkey_agg(pubkeys)
     assert byte_size(agg_xonly_pubkey) == 32
+    assert is_reference(cache)
 
     # 3. Generate nonces
     # We need to keep the secnonce resource alive
@@ -40,7 +42,7 @@ defmodule Secp256k1.MuSigTest do
 
     # 5. Process nonces (create session)
     session = MuSig.nonce_process(aggnonce, msg, cache)
-    assert byte_size(session) == 133
+    assert is_reference(session)
 
     # 6. Partial signing
     signers =
@@ -71,6 +73,24 @@ defmodule Secp256k1.MuSigTest do
 
     # 9. Verify final signature
     assert Schnorr.valid?(final_sig, msg, agg_xonly_pubkey)
+  end
+
+  test "cache resource supports public key lookup and functional tweaks" do
+    {_seckey, pubkey} = Secp256k1.keypair(:compressed)
+    {:ok, _agg_xonly_pubkey, cache} = MuSig.pubkey_agg([pubkey])
+
+    assert is_reference(cache)
+    assert byte_size(MuSig.pubkey_get(cache)) == 33
+
+    tweak = :crypto.strong_rand_bytes(32)
+    {:ok, ec_tweaked_cache, ec_tweaked_pubkey} = MuSig.pubkey_ec_tweak_add(cache, tweak)
+    assert is_reference(ec_tweaked_cache)
+    assert byte_size(ec_tweaked_pubkey) == 33
+    assert is_reference(cache)
+
+    {:ok, xonly_tweaked_cache, xonly_tweaked_pubkey} = MuSig.pubkey_xonly_tweak_add(cache, tweak)
+    assert is_reference(xonly_tweaked_cache)
+    assert byte_size(xonly_tweaked_pubkey) == 33
   end
 
   test "nonce reuse protection" do
@@ -144,6 +164,104 @@ defmodule Secp256k1.MuSigTest do
     end
   end
 
+  test "opaque MuSig state rejects forged binaries" do
+    state = signing_state()
+    tweak = <<1::256>>
+
+    assert_raise ArgumentError, fn ->
+      MuSig.pubkey_get(<<0::197*8>>)
+    end
+
+    assert_raise ArgumentError, fn ->
+      MuSig.pubkey_ec_tweak_add(<<0::197*8>>, tweak)
+    end
+
+    assert_raise ArgumentError, fn ->
+      MuSig.pubkey_xonly_tweak_add(<<0::197*8>>, tweak)
+    end
+
+    assert_raise ArgumentError, fn ->
+      MuSig.nonce_process(state.aggnonce, state.msg, <<0::197*8>>)
+    end
+
+    assert_raise ArgumentError, fn ->
+      MuSig.partial_sig_verify(
+        state.partial_sig,
+        state.pubnonce,
+        state.pubkey,
+        <<0::197*8>>,
+        state.session
+      )
+    end
+
+    assert_raise ArgumentError, fn ->
+      MuSig.partial_sig_verify(
+        state.partial_sig,
+        state.pubnonce,
+        state.pubkey,
+        state.cache,
+        <<0::133*8>>
+      )
+    end
+
+    assert_raise ArgumentError, fn ->
+      MuSig.partial_sig_agg(<<0::133*8>>, [state.partial_sig])
+    end
+  end
+
+  test "nonce_gen requires a signer public key" do
+    msg = :crypto.strong_rand_bytes(32)
+    {seckey, pubkey} = Secp256k1.keypair(:compressed)
+    {:ok, _agg_xonly_pubkey, cache} = MuSig.pubkey_agg([pubkey])
+
+    assert_raise ArgumentError, fn ->
+      MuSig.nonce_gen(seckey, nil, msg, cache, nil)
+    end
+
+    assert_raise ArgumentError, fn ->
+      MuSig.nonce_gen(seckey, <<0::33*8>>, msg, cache, nil)
+    end
+  end
+
+  test "formerly aborting malformed cache probes only raise in child BEAM" do
+    assert_subprocess_argument_error("""
+    alias Secp256k1.MuSig
+    MuSig.pubkey_get(<<0::197*8>>)
+    """)
+
+    assert_subprocess_argument_error("""
+    alias Secp256k1.MuSig
+    {seckey, pubkey} = Secp256k1.keypair(:compressed)
+    {:ok, _agg_xonly_pubkey, cache} = MuSig.pubkey_agg([pubkey])
+    msg = <<1::256>>
+    {:ok, _secnonce, pubnonce} = MuSig.nonce_gen(seckey, pubkey, msg, cache, nil)
+    aggnonce = MuSig.nonce_agg([pubnonce])
+    MuSig.nonce_process(aggnonce, msg, <<0::197*8>>)
+    """)
+
+    assert_subprocess_argument_error("""
+    alias Secp256k1.MuSig
+    {seckey, pubkey} = Secp256k1.keypair(:compressed)
+    {:ok, _agg_xonly_pubkey, cache} = MuSig.pubkey_agg([pubkey])
+    msg = <<1::256>>
+    MuSig.nonce_gen(seckey, nil, msg, cache, nil)
+    """)
+  end
+
+  test "formerly aborting malformed session probe only raises in child BEAM" do
+    assert_subprocess_argument_error("""
+    alias Secp256k1.MuSig
+    {seckey, pubkey} = Secp256k1.keypair(:compressed)
+    {:ok, _agg_xonly_pubkey, cache} = MuSig.pubkey_agg([pubkey])
+    msg = <<1::256>>
+    {:ok, secnonce, pubnonce} = MuSig.nonce_gen(seckey, pubkey, msg, cache, nil)
+    aggnonce = MuSig.nonce_agg([pubnonce])
+    session = MuSig.nonce_process(aggnonce, msg, cache)
+    partial_sig = MuSig.partial_sign(secnonce, seckey, cache, session)
+    MuSig.partial_sig_agg(<<0::133*8>>, [partial_sig])
+    """)
+  end
+
   defp signing_state do
     msg = :crypto.strong_rand_bytes(32)
     {seckey, pubkey} = Secp256k1.keypair(:compressed)
@@ -162,5 +280,12 @@ defmodule Secp256k1.MuSigTest do
       session: session,
       partial_sig: partial_sig
     }
+  end
+
+  defp assert_subprocess_argument_error(expression) do
+    {output, status} = MuSigSubprocess.run(expression)
+
+    assert status == 0, output
+    assert output =~ "MUSIG_SUBPROCESS_ARGUMENT_ERROR"
   end
 end

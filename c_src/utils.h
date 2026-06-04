@@ -4,7 +4,7 @@
 #include <erl_nif.h>
 #include <secp256k1.h>
 #include <string.h>
-#include <assert.h>
+#include <stdio.h>
 
 #if defined(_MSC_VER)
 #include <Windows.h>
@@ -13,6 +13,29 @@
 #include "random.h"
 
 static secp256k1_context *ctx = NULL;
+
+static void
+secp256k1_nif_illegal_callback(const char *message, void *data)
+{
+  (void)data;
+  fprintf(stderr, "[libsecp256k1 NIF] illegal argument: %s\n", message ? message : "(null)");
+  fflush(stderr);
+}
+
+static void
+secp256k1_nif_error_callback(const char *message, void *data)
+{
+  (void)data;
+  fprintf(stderr, "[libsecp256k1 NIF] internal error: %s\n", message ? message : "(null)");
+  fflush(stderr);
+}
+
+static void
+install_context_callbacks(secp256k1_context *context)
+{
+  secp256k1_context_set_illegal_callback(context, secp256k1_nif_illegal_callback, NULL);
+  secp256k1_context_set_error_callback(context, secp256k1_nif_error_callback, NULL);
+}
 
 static void
 secure_erase(void *ptr, size_t len)
@@ -33,14 +56,31 @@ load(ErlNifEnv *env, void **priv, ERL_NIF_TERM load_info)
 {
   int return_val;
   unsigned char randomize[32];
+
+  (void)env;
+  (void)priv;
+  (void)load_info;
+
   ctx = secp256k1_context_create(SECP256K1_CONTEXT_NONE);
-  if (!fill_random(randomize, sizeof(randomize)))
-  {
+  if (!ctx) {
     return -1;
   }
+  install_context_callbacks(ctx);
+
+  if (!fill_random(randomize, sizeof(randomize))) {
+    secp256k1_context_destroy(ctx);
+    ctx = NULL;
+    return -1;
+  }
+
   return_val = secp256k1_context_randomize(ctx, randomize);
-  assert(return_val);
   secure_erase(randomize, sizeof(randomize));
+  if (!return_val) {
+    secp256k1_context_destroy(ctx);
+    ctx = NULL;
+    return -1;
+  }
+
   return 0;
 }
 
@@ -50,10 +90,16 @@ upgrade(ErlNifEnv *env, void **priv, void **old_priv, ERL_NIF_TERM load_info)
   int return_val;
   unsigned char randomize[32];
 
+  (void)env;
+  (void)priv;
+  (void)old_priv;
+  (void)load_info;
+
   ctx = secp256k1_context_create(SECP256K1_CONTEXT_NONE);
   if (!ctx) {
     return -1;
   }
+  install_context_callbacks(ctx);
 
   if (!fill_random(randomize, sizeof(randomize))) {
     secp256k1_context_destroy(ctx);
@@ -75,7 +121,13 @@ upgrade(ErlNifEnv *env, void **priv, void **old_priv, ERL_NIF_TERM load_info)
 static void
 unload(ErlNifEnv *env, void *priv)
 {
-  secp256k1_context_destroy(ctx);
+  (void)env;
+  (void)priv;
+
+  if (ctx) {
+    secp256k1_context_destroy(ctx);
+    ctx = NULL;
+  }
   return;
 }
 
