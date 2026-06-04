@@ -109,6 +109,45 @@ defmodule Secp256k1.MuSigTest do
     assert {:error, "nonce already used"} = MuSig.partial_sign(secnonce, seckey, cache, session)
   end
 
+  test "nonce reuse protection is concurrency-safe" do
+    {seckey, pubkey} = Secp256k1.keypair(:compressed)
+    {:ok, _, cache} = MuSig.pubkey_agg([pubkey])
+    msg = :crypto.strong_rand_bytes(32)
+
+    {:ok, secnonce, pubnonce} = MuSig.nonce_gen(seckey, pubkey, msg, cache, nil)
+    aggnonce = MuSig.nonce_agg([pubnonce])
+    session = MuSig.nonce_process(aggnonce, msg, cache)
+
+    parent = self()
+
+    tasks =
+      for _ <- 1..32 do
+        Task.async(fn ->
+          send(parent, {:ready, self()})
+
+          receive do
+            :go -> MuSig.partial_sign(secnonce, seckey, cache, session)
+          after
+            5_000 -> exit(:barrier_timeout)
+          end
+        end)
+      end
+
+    for _ <- tasks do
+      assert_receive {:ready, _pid}, 5_000
+    end
+
+    Enum.each(tasks, fn task -> send(task.pid, :go) end)
+
+    results = Task.await_many(tasks, 5_000)
+    successful_signatures = Enum.filter(results, &(is_binary(&1) and byte_size(&1) == 32))
+    nonce_reuse_errors = Enum.filter(results, &match?({:error, "nonce already used"}, &1))
+
+    assert length(successful_signatures) == 1
+    assert length(nonce_reuse_errors) == 31
+    refute {:error, "secp256k1_musig_partial_sign failed"} in results
+  end
+
   test "serialized MuSig inputs reject overlong binaries" do
     state = signing_state()
 

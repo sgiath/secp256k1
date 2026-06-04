@@ -21,6 +21,7 @@ typedef struct {
 
 typedef struct {
   secp256k1_musig_secnonce nonce;
+  ErlNifMutex *mutex;
   int used;
 } secnonce_wrapper;
 
@@ -41,7 +42,15 @@ destruct_session(ErlNifEnv *env, void *obj)
 static void
 destruct_secnonce(ErlNifEnv *env, void *obj)
 {
+  secnonce_wrapper *wrapper = (secnonce_wrapper *)obj;
+
   (void)env;
+
+  if (wrapper->mutex) {
+    enif_mutex_destroy(wrapper->mutex);
+    wrapper->mutex = NULL;
+  }
+
   secure_erase(obj, sizeof(secnonce_wrapper));
 }
 
@@ -475,8 +484,15 @@ nonce_gen(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     return error_result(env, "enif_alloc_resource failed");
   }
   memcpy(&wrapper->nonce, &secnonce, sizeof(secnonce));
+  wrapper->mutex = enif_mutex_create("secp256k1_musig_secnonce");
   wrapper->used = 0;
   secure_erase(&secnonce, sizeof(secnonce));
+
+  if (!wrapper->mutex) {
+    enif_release_binary(&bin_pubnonce);
+    enif_release_resource(wrapper);
+    return error_result(env, "enif_mutex_create failed");
+  }
 
   resource_term = enif_make_resource(env, wrapper);
   enif_release_resource(wrapper);
@@ -603,10 +619,6 @@ partial_sign(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   if (!enif_get_resource(env, argv[0], secnonce_resource_type, (void **)&wrapper)) {
     return enif_make_badarg(env);
   }
-  if (wrapper->used) {
-    return error_result(env, "nonce already used");
-  }
-
   if (!enif_get_resource(env, argv[2], keyagg_cache_resource_type, (void **)&cache) ||
       !enif_get_resource(env, argv[3], session_resource_type, (void **)&session)) {
     return enif_make_badarg(env);
@@ -618,6 +630,15 @@ partial_sign(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     return enif_make_badarg(env);
   }
 
+  enif_mutex_lock(wrapper->mutex);
+  if (wrapper->used) {
+    enif_mutex_unlock(wrapper->mutex);
+    secure_erase(&keypair, sizeof(keypair));
+    return error_result(env, "nonce already used");
+  }
+  wrapper->used = 1;
+  enif_mutex_unlock(wrapper->mutex);
+
   if (!secp256k1_musig_partial_sign(
       ctx,
       &partial_sig,
@@ -627,10 +648,11 @@ partial_sign(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
       &session->session
     )) {
     secure_erase(&keypair, sizeof(keypair));
+    secure_erase(&wrapper->nonce, sizeof(wrapper->nonce));
     return error_result(env, "secp256k1_musig_partial_sign failed");
   }
-  wrapper->used = 1;
   secure_erase(&keypair, sizeof(keypair));
+  secure_erase(&wrapper->nonce, sizeof(wrapper->nonce));
 
   if (!enif_alloc_binary(MUSIG_PARTIAL_SIG_SERIALIZED_SIZE, &bin_partial_sig)) {
     return enif_make_tuple2(env,
