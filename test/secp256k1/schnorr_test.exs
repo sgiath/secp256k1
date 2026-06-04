@@ -40,4 +40,12 @@ defmodule Secp256k1Test.Schnorr do
     assert Schnorr.valid?(sig, msg_hash, p)
     refute Schnorr.valid?(sig, msg, p)
   end
+
+  test "valid? returns false for x-only pubkeys that fail parsing" do
+    message = :binary.copy(<<0>>, 32)
+    signature = :binary.copy(<<0>>, 64)
+
+    assert Schnorr.valid?(signature, message, :binary.copy(<<0>>, 32)) == false
+    assert Schnorr.valid?(signature, message, :binary.copy(<<255>>, 32)) == false
+  end
 end

@@ -28,4 +28,21 @@ defmodule Secp256k1Test.ECDSA do
     assert ECDSA.compress_pubkey(pu) == pc
     assert ECDSA.decompress_pubkey(pc) == pu
   end
+
+  test "valid? returns false for compact signatures that fail parsing", %{
+    pubkey_compressed: pubkey
+  } do
+    msg_hash = :binary.copy(<<0>>, 32)
+    signature = :binary.copy(<<255>>, 64)
+
+    assert ECDSA.valid?(signature, msg_hash, pubkey) == false
+  end
+
+  test "valid? returns false for compressed pubkeys that fail parsing", %{seckey: seckey} do
+    msg_hash = :crypto.hash(:sha256, "hello")
+    signature = ECDSA.sign(msg_hash, seckey)
+    pubkey = :binary.copy(<<0>>, 33)
+
+    assert ECDSA.valid?(signature, msg_hash, pubkey) == false
+  end
 end

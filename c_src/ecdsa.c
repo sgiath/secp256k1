@@ -255,12 +255,12 @@ verify(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 
   if (!secp256k1_ecdsa_signature_parse_compact(ctx, &sig, serialized_sig.data))
   {
-    return error_result(env, "secp256k1_ecdsa_signature_parse_compact failed");
+    return enif_make_atom(env, "false");
   }
 
   if (!secp256k1_ec_pubkey_parse(ctx, &pubkey, serialized_pubkey.data, serialized_pubkey.size))
   {
-    return error_result(env, "secp256k1_ec_pubkey_parse failed");
+    return enif_make_atom(env, "false");
   }
 
   if (secp256k1_ecdsa_verify(ctx, &sig, msg_hash.data, &pubkey))

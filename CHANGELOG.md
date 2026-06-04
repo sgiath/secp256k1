@@ -1,5 +1,10 @@
 # Changelog
 
+## unreleased
+
+- Fix Elixir 1.20 type violations
+- Make sure `ECDSA.valid?/3` and `Schnorr.valid?/3` always return a boolean
+
 ## v0.7.1 (2026-01-31)
 
 - Fixed unchecked `enif_alloc_binary()` return values that could cause undefined behavior under memory pressure

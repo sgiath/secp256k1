@@ -23,6 +23,8 @@
               git
               autoreconfHook
               prettier
+              nil
+              nixd
             ];
 
             env = {

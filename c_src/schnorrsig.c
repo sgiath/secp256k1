@@ -142,7 +142,7 @@ verify(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 
   if (!secp256k1_xonly_pubkey_parse(ctx, &xonly_pubkey, pubkey.data))
   {
-    return error_result(env, "secp256k1_xonly_pubkey_parse failed");
+    return enif_make_atom(env, "false");
   }
 
   if (secp256k1_schnorrsig_verify(ctx, signature.data, message.data, message.size, &xonly_pubkey))
