@@ -38,17 +38,21 @@ xonly_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 
   if (!secp256k1_keypair_xonly_pub(ctx, &pubkey, NULL, &keypair))
   {
-    return error_result(env, "secp256k1_keypair_xonly_pub failed");
+    result = error_result(env, "secp256k1_keypair_xonly_pub failed");
+    goto cleanup;
   }
 
   if (!secp256k1_xonly_pubkey_serialize(ctx, serialized_pubkey, &pubkey))
   {
-    return error_result(env, "secp256k1_xonly_pubkey_serialize failed");
+    result = error_result(env, "secp256k1_xonly_pubkey_serialize failed");
+    goto cleanup;
   }
 
   /* Convert serialized pubkey to Erlang binary */
   finished = enif_make_new_binary(env, sizeof(serialized_pubkey), &result);
   memcpy(finished, serialized_pubkey, sizeof(serialized_pubkey));
+
+cleanup:
   secure_erase(&keypair, sizeof(keypair));
   return result;
 }

@@ -52,12 +52,15 @@ sign32(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   /* Generate a Schnorr signature */
   if (!secp256k1_schnorrsig_sign32(ctx, signature, message.data, &keypair, auxiliary_rand.data))
   {
-    return error_result(env, "secp256k1_schnorrsig_sign32 failed");
+    result = error_result(env, "secp256k1_schnorrsig_sign32 failed");
+    goto cleanup;
   }
 
   /* Convert signature to Erlang binary */
   finished = enif_make_new_binary(env, sizeof(signature), &result);
   memcpy(finished, signature, sizeof(signature));
+
+cleanup:
   secure_erase(&keypair, sizeof(keypair));
   return result;
 }
@@ -107,12 +110,15 @@ sign_custom(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   /* Generate a Schnorr signature */
   if (!secp256k1_schnorrsig_sign_custom(ctx, signature, message.data, message.size, &keypair, &extraparams))
   {
-    return error_result(env, "secp256k1_schnorrsig_sign_custom failed");
+    result = error_result(env, "secp256k1_schnorrsig_sign_custom failed");
+    goto cleanup;
   }
 
   /* Convert signature to Erlang binary */
   finished = enif_make_new_binary(env, sizeof(signature), &result);
   memcpy(finished, signature, sizeof(signature));
+
+cleanup:
   secure_erase(&keypair, sizeof(keypair));
   return result;
 }
