@@ -1,6 +1,6 @@
 # Changelog
 
-## unreleased
+## v0.7.2 (2026-06-04)
 
 - Fix Elixir 1.20 type violations
 - Make sure `ECDSA.valid?/3` and `Schnorr.valid?/3` always return a boolean
