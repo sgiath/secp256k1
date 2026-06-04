@@ -6,6 +6,12 @@
 
 Elixir NIF bindings for the [bitcoin-core/secp256k1](https://github.com/bitcoin-core/secp256k1) cryptographic library. Used extensively in Bitcoin, Ethereum, Nostr, and other blockchain/cryptocurrency applications.
 
+> #### Scope {: .info}
+>
+> This package exposes libsecp256k1 behavior in Elixir. It intentionally relies
+> on Erlang's `:crypto` module for generic cryptographic building blocks such
+> as hashing, random bytes, generic ECDSA, and raw ECDH.
+
 ## Features
 
 - **Keypair generation** - secure random secret keys with compressed, uncompressed, or x-only public keys
@@ -73,6 +79,16 @@ Secp256k1.ecdsa_valid?(signature, msg_hash, pubkey)
 #=> true
 ```
 
+> #### ECDSA and `:crypto` {: .info}
+>
+> Erlang's `:crypto` module also provides generic ECDSA through
+> `:crypto.sign/4` and `:crypto.verify/5`. Use that API when you want the
+> standard Erlang/OpenSSL interface with digest selection and DER-encoded
+> signatures. Use `Secp256k1.ecdsa_sign/2` and `Secp256k1.ecdsa_valid?/3` when
+> you want the libsecp256k1/Bitcoin-oriented contract: sign an already prepared
+> 32-byte message hash, use compressed secp256k1 public keys, and exchange
+> compact 64-byte `r || s` signatures.
+
 ### Schnorr Signatures (BIP-340)
 
 ```elixir
@@ -87,9 +103,32 @@ Secp256k1.schnorr_valid?(signature, msg_hash, pubkey)
 #=> true
 ```
 
+### ECDH Shared Secrets
+
+```elixir
+{alice_seckey, _alice_pubkey} = Secp256k1.keypair(:compressed)
+{_bob_seckey, bob_pubkey} = Secp256k1.keypair(:compressed)
+
+# Returns libsecp256k1's default hashed ECDH output.
+shared_secret = Secp256k1.ecdh(alice_seckey, bob_pubkey)
+byte_size(shared_secret)
+#=> 32
+```
+
+> #### ECDH and `:crypto` {: .info}
+>
+> `Secp256k1.ecdh/2` wraps the upstream C library behavior. It returns the
+> libsecp256k1 default hashed shared secret, currently SHA256 over the
+> compressed shared point. For generic raw ECDH, use `:crypto.compute_key/4`.
+
 ### MuSig2 Multi-Signatures (BIP-327)
 
 For multi-party signing where multiple parties create a single aggregated signature. See the [MuSig Guide](https://hexdocs.pm/lib_secp256k1/musig.html) for the complete protocol.
+
+> #### Nonces are one-use {: .warning}
+>
+> MuSig2 secret nonces must never be reused. Call `Secp256k1.MuSig.nonce_gen/5`
+> fresh for every signing attempt.
 
 ```elixir
 # Aggregate public keys from multiple signers
@@ -103,9 +142,9 @@ Secp256k1.schnorr_valid?(final_sig, msg_hash, agg_pubkey)
 
 ## Documentation
 
-- [HexDocs](https://hexdocs.pm/lib_secp256k1) - API reference
-- [Usage Guide](https://hexdocs.pm/lib_secp256k1/usage.html) - detailed examples
-- [MuSig Guide](https://hexdocs.pm/lib_secp256k1/musig.html) - multi-signature protocol
+- [HexDocs](https://lib-secp256k1.hexdocs.pm/) - API reference
+- [Usage Guide](https://lib-secp256k1.hexdocs.pm/usage.html) - detailed examples
+- [MuSig Guide](https://lib-secp256k1.hexdocs.pm/musig.html) - multi-signature protocol
 
 ## Platform Support
 

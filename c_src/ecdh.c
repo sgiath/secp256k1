@@ -41,7 +41,7 @@ ecdh(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     return error_result(env, "secp256k1_ecdh failed");
   }
 
-  /* Convert serialized pubkey to Erlang binary */
+  /* Convert shared secret to Erlang binary */
   finished = enif_make_new_binary(env, sizeof(shared_secret), &result);
   memcpy(finished, shared_secret, sizeof(shared_secret));
   secure_erase(shared_secret, sizeof(shared_secret));
@@ -49,7 +49,7 @@ ecdh(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 }
 
 static ErlNifFunc nif_funcs[] = {
-    {"ecdh", 2, ecdh},
+    {"ecdh_nif", 2, ecdh},
 };
 
 ERL_NIF_INIT(Elixir.Secp256k1.ECDH, nif_funcs, &load, NULL, &upgrade, &unload)

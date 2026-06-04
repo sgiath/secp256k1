@@ -10,7 +10,18 @@ MuSig2 (BIP-327) is a multi-signature scheme that allows multiple parties to agg
 - **Partial Signing**: Each signer creates a partial signature using their secret key, secret nonce, and the aggregate nonce.
 - **Signature Aggregation**: Combining partial signatures into the final valid Schnorr signature.
 
-`keyagg_cache`, `session`, and `secnonce` values returned by this library are process-local NIF resources. They are not serialized binaries, cannot be stored or sent to another BEAM instance, and must be recreated for each signing process. Public nonces, aggregate nonces, partial signatures, and final signatures are serialized binaries.
+> #### Process-local state {: .info}
+>
+> `keyagg_cache`, `session`, and `secnonce` values returned by this library are
+> process-local NIF resources. They are not serialized binaries, cannot be
+> stored or sent to another BEAM instance, and must be recreated for each
+> signing process. Public nonces, aggregate nonces, partial signatures, and
+> final signatures are serialized binaries.
+
+> #### Secret nonces are one-use {: .warning}
+>
+> Never reuse MuSig2 secret nonces. Call `nonce_gen/5` fresh for every signing
+> attempt. Reusing a nonce with the same key can leak the secret key.
 
 ## Example: 3-of-3 Signing Session
 
@@ -106,8 +117,10 @@ is_valid = Secp256k1.schnorr_valid?(final_signature, message, agg_xonly_pubkey)
 
 ## Security Considerations
 
-1.  **Nonce Reuse**: NEVER reuse nonces. The `nonce_gen` function uses randomness and the message to protect against this, but you must ensure that a fresh `nonce_gen` call is made for every signature attempt. Reusing a nonce with the same key leaks the secret key.
-2.  **Round Communication**: MuSig2 is a 2-round protocol.
-    - Round 1: Exchange public nonces.
-    - Round 2: Exchange partial signatures.
-    - All public nonces must be received before signing (Round 2) begins.
+1. **Nonce Reuse**: never reuse nonces. The `nonce_gen` function uses
+   randomness and the message to protect against this, but you must ensure that
+   a fresh `nonce_gen` call is made for every signature attempt.
+2. **Round Communication**: MuSig2 is a 2-round protocol.
+   - Round 1: Exchange public nonces.
+   - Round 2: Exchange partial signatures.
+   - All public nonces must be received before signing begins.

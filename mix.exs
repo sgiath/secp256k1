@@ -90,7 +90,13 @@ defmodule Secp256k1.MixProject do
 
   defp groups_for_modules do
     [
-      "Private API": [Secp256k1.ECDSA, Secp256k1.Extrakeys, Secp256k1.Schnorr, Secp256k1.MuSig]
+      "Private API": [
+        Secp256k1.ECDH,
+        Secp256k1.ECDSA,
+        Secp256k1.Extrakeys,
+        Secp256k1.Schnorr,
+        Secp256k1.MuSig
+      ]
     ]
   end
 end

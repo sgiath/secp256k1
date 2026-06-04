@@ -2,6 +2,13 @@
 
 This guide covers the basic usage of the `lib_secp256k1` library for Elixir.
 
+> #### Scope {: .info}
+>
+> `lib_secp256k1` wraps the upstream libsecp256k1 C library. Use Erlang's
+> `:crypto` module for generic hashing, random bytes, generic ECDSA, and raw
+> ECDH. Use this library when you need libsecp256k1-specific key formats,
+> signatures, Schnorr, MuSig2, or the libsecp256k1 ECDH output contract.
+
 ## Installation
 
 ### System Dependencies
@@ -73,6 +80,11 @@ ECDSA is the traditional signature scheme used in Bitcoin and other cryptocurren
 
 To sign a message, you first need to hash it (typically using SHA-256).
 
+> #### Hashing belongs to `:crypto` {: .tip}
+>
+> Hashing is intentionally done with Erlang's built-in `:crypto` module. This
+> library does not reimplement generic hashing APIs.
+
 ```elixir
 # 1. Prepare the message hash
 message = "Hello, World!"
@@ -92,6 +104,20 @@ To verify a signature, you need the signature, the message hash, and the public 
 is_valid = Secp256k1.ecdsa_valid?(signature, msg_hash, pubkey)
 # => true
 ```
+
+> #### ECDSA and `:crypto` {: .info}
+>
+> Erlang's `:crypto` module also provides generic ECDSA through
+> `:crypto.sign/4` and `:crypto.verify/5`. Use that API when you want the
+> standard Erlang/OpenSSL interface with digest selection and DER-encoded
+> signatures.
+>
+> Use `Secp256k1.ecdsa_sign/2` and `Secp256k1.ecdsa_valid?/3` when you want the
+> libsecp256k1/Bitcoin-oriented contract:
+>
+> - sign an already prepared 32-byte message hash
+> - verify with compressed secp256k1 public keys
+> - exchange compact 64-byte `r || s` signatures
 
 ## Schnorr Signatures
 
@@ -118,4 +144,28 @@ xonly_pubkey = Secp256k1.pubkey(seckey, :xonly)
 # Verify
 is_valid = Secp256k1.schnorr_valid?(signature, msg_hash, xonly_pubkey)
 # => true
+```
+
+## ECDH Shared Secrets
+
+`Secp256k1.ecdh/2` computes libsecp256k1's default hashed ECDH shared secret.
+It accepts a 32-byte secret key and a compressed or uncompressed secp256k1
+public key, and returns a 32-byte binary.
+
+```elixir
+{alice_seckey, _alice_pubkey} = Secp256k1.keypair(:compressed)
+{_bob_seckey, bob_pubkey} = Secp256k1.keypair(:compressed)
+
+shared_secret = Secp256k1.ecdh(alice_seckey, bob_pubkey)
+# => <<_::256>>
+```
+
+> #### ECDH and `:crypto` {: .info}
+>
+> This is not raw generic ECDH. It wraps the upstream C library behavior,
+> currently SHA256 over the compressed shared point. This output intentionally
+> differs from Erlang/OpenSSL raw ECDH. If you need raw ECDH instead, call:
+
+```elixir
+:crypto.compute_key(:ecdh, other_pubkey, my_private_key, :secp256k1)
 ```

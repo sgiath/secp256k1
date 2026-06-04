@@ -39,6 +39,14 @@ defmodule Secp256k1 do
       iex> Secp256k1.schnorr_valid?(sig, msg_hash, pubkey)
       true
 
+  ### Calculate ECDH shared secret
+
+      iex> {alice_seckey, _alice_pubkey} = Secp256k1.keypair(<<1::256>>, :compressed)
+      iex> {_bob_seckey, bob_pubkey} = Secp256k1.keypair(<<2::256>>, :compressed)
+      iex> shared_secret = Secp256k1.ecdh(alice_seckey, bob_pubkey)
+      iex> byte_size(shared_secret)
+      32
+
   """
   @moduledoc authors: ["sgiath <secp256k1@sgiath.dev>"]
 
@@ -89,7 +97,7 @@ defmodule Secp256k1 do
   """
   @type schnorr_sig() :: <<_::512>>
 
-  @typedoc "ECDH shared secret is 32 bytes long binary"
+  @typedoc "libsecp256k1 default hashed ECDH shared secret is 32 bytes long binary"
   @type shared_secret() :: <<_::256>>
 
   @doc """
@@ -139,6 +147,24 @@ defmodule Secp256k1 do
       when is_seckey(seckey) and type in [:xonly, :compressed, :uncompressed] do
     {seckey, Secp256k1.pubkey(seckey, type)}
   end
+
+  @doc """
+  Compute libsecp256k1's default hashed ECDH shared secret.
+
+  Inputs
+    - `seckey` 32 byte long binary
+    - `pubkey` compressed or uncompressed secp256k1 public key
+
+  Output
+    - `shared_secret` 32 byte binary
+
+  This wraps libsecp256k1's ECDH module. It returns the upstream library's
+  default hashed ECDH output, currently SHA256 over the compressed shared point.
+  For generic raw ECDH, use `:crypto.compute_key/4`.
+  """
+  @spec ecdh(seckey :: seckey(), pubkey :: compressed_pubkey() | uncompressed_pubkey()) ::
+          shared_secret()
+  defdelegate ecdh(seckey, pubkey), to: Secp256k1.ECDH
 
   @doc """
   Create an ECDSA signature

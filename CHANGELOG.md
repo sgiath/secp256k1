@@ -8,6 +8,8 @@
 - Harden MuSig2 invalid-input handling by making key aggregation caches and signing sessions process-local resources instead of raw opaque binaries
 - Make MuSig2 secret nonce consumption concurrency-safe so only one concurrent `partial_sign/4` call can use a secnonce resource
 - Ensure Schnorr signing and x-only pubkey NIF error paths erase keypair stack data before returning
+- Expose libsecp256k1's default hashed ECDH API through `Secp256k1.ecdh/2`
+- Improve API documentation with ExDoc callouts explaining libsecp256k1-specific APIs versus Erlang `:crypto`
 
 ## v0.7.1 (2026-01-31)
 
