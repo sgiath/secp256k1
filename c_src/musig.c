@@ -2,6 +2,10 @@
 
 #include <secp256k1_musig.h>
 
+#define MUSIG_PUBNONCE_SERIALIZED_SIZE 66
+#define MUSIG_AGGNONCE_SERIALIZED_SIZE 66
+#define MUSIG_PARTIAL_SIG_SERIALIZED_SIZE 32
+
 // Resource type for secret nonces to prevent copying and allow secure erasure
 static ErlNifResourceType *secnonce_resource_type;
 
@@ -355,7 +359,7 @@ nonce_gen(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   resource_term = enif_make_resource(env, wrapper);
   enif_release_resource(wrapper);
 
-  if (!enif_alloc_binary(sizeof(pubnonce), &bin_pubnonce)) {
+  if (!enif_alloc_binary(MUSIG_PUBNONCE_SERIALIZED_SIZE, &bin_pubnonce)) {
     return enif_make_tuple2(env,
       enif_make_atom(env, "error"),
       enif_make_atom(env, "allocation_failed")
@@ -402,6 +406,7 @@ nonce_agg(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     ErlNifBinary bin;
     if (!enif_get_list_cell(env, list, &head, &tail)) goto bad_arg;
     if (!enif_inspect_binary(env, head, &bin) ||
+        bin.size != MUSIG_PUBNONCE_SERIALIZED_SIZE ||
         !secp256k1_musig_pubnonce_parse(ctx, &nonces[i], bin.data)) {
       goto bad_arg;
     }
@@ -418,7 +423,7 @@ nonce_agg(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   enif_free(nonces);
   enif_free(nonces_ptrs);
 
-  if (!enif_alloc_binary(sizeof(aggnonce), &bin_aggnonce)) {
+  if (!enif_alloc_binary(MUSIG_AGGNONCE_SERIALIZED_SIZE, &bin_aggnonce)) {
     return enif_make_tuple2(env,
       enif_make_atom(env, "error"),
       enif_make_atom(env, "allocation_failed")
@@ -449,6 +454,7 @@ nonce_process(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   ErlNifBinary bin_session;
 
   if (!enif_inspect_binary(env, argv[0], &bin_aggnonce) ||
+      bin_aggnonce.size != MUSIG_AGGNONCE_SERIALIZED_SIZE ||
       !secp256k1_musig_aggnonce_parse(ctx, &aggnonce, bin_aggnonce.data)) {
     return enif_make_badarg(env);
   }
@@ -520,7 +526,7 @@ partial_sign(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   // We also clear keypair
   secure_erase(&keypair, sizeof(keypair));
 
-  if (!enif_alloc_binary(sizeof(partial_sig), &bin_partial_sig)) {
+  if (!enif_alloc_binary(MUSIG_PARTIAL_SIG_SERIALIZED_SIZE, &bin_partial_sig)) {
     return enif_make_tuple2(env,
       enif_make_atom(env, "error"),
       enif_make_atom(env, "allocation_failed")
@@ -547,10 +553,12 @@ partial_sig_verify(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   secp256k1_musig_session session;
 
   if (!enif_inspect_binary(env, argv[0], &bin_psig) ||
+      bin_psig.size != MUSIG_PARTIAL_SIG_SERIALIZED_SIZE ||
       !secp256k1_musig_partial_sig_parse(ctx, &partial_sig, bin_psig.data)) {
     return enif_make_badarg(env);
   }
   if (!enif_inspect_binary(env, argv[1], &bin_pubnonce) ||
+      bin_pubnonce.size != MUSIG_PUBNONCE_SERIALIZED_SIZE ||
       !secp256k1_musig_pubnonce_parse(ctx, &pubnonce, bin_pubnonce.data)) {
     return enif_make_badarg(env);
   }
@@ -610,6 +618,7 @@ partial_sig_agg(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     ErlNifBinary bin;
     if (!enif_get_list_cell(env, list, &head, &tail)) goto bad_arg;
     if (!enif_inspect_binary(env, head, &bin) ||
+        bin.size != MUSIG_PARTIAL_SIG_SERIALIZED_SIZE ||
         !secp256k1_musig_partial_sig_parse(ctx, &sigs[i], bin.data)) {
       goto bad_arg;
     }

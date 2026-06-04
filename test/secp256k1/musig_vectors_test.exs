@@ -41,8 +41,7 @@ defmodule Secp256k1Test.MuSigVectors do
 
       aggnonce = MuSig.nonce_agg(nonces)
 
-      assert byte_size(aggnonce) == 132
-      assert binary_part(aggnonce, 0, 66) == expected
+      assert aggnonce == expected
     end
   end
 

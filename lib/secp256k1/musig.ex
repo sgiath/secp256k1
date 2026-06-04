@@ -39,10 +39,10 @@ defmodule Secp256k1.MuSig do
   @type secnonce :: reference()
   # 66 bytes
   @type pubnonce :: <<_::528>>
-  # 132 bytes
-  @type aggnonce :: <<_::1056>>
-  # 36 bytes
-  @type partial_sig :: <<_::288>>
+  # 66 bytes
+  @type aggnonce :: <<_::528>>
+  # 32 bytes
+  @type partial_sig :: <<_::256>>
 
   @doc """
   Aggregates public keys.

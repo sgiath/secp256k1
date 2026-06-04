@@ -4,6 +4,7 @@
 
 - Fix Elixir 1.20 type violations
 - Make sure `ECDSA.valid?/3` and `Schnorr.valid?/3` always return a boolean
+- Fix MuSig2 public nonce, aggregate nonce, and partial signature wire-size serialization to avoid returning uninitialized NIF memory tails
 
 ## v0.7.1 (2026-01-31)
 
