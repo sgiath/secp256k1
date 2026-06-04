@@ -2,7 +2,7 @@
   description = "secp256k1 lib in Elixir";
 
   inputs = {
-    nixpkgs.url = "nixpkgs/nixos-unstable";
+    nixpkgs.url = "nixpkgs/master";
     parts.url = "github:hercules-ci/flake-parts";
   };
 
@@ -13,8 +13,8 @@
       perSystem =
         { pkgs, ... }:
         let
-          beamPackages = pkgs.beam.packages.erlang_28;
-          elixir = beamPackages.elixir_1_19;
+          beamPackages = pkgs.beam.packages.erlang_29;
+          elixir = beamPackages.elixir_1_20;
         in
         {
           devShells.default = pkgs.mkShell {

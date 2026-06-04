@@ -45,7 +45,7 @@ defmodule Secp256k1.MixProject do
   defp deps do
     [
       # C compilation
-      {:elixir_make, "~> 0.9", runtime: false},
+      {:elixir_make, "~> 0.10", runtime: false},
 
       # Development
       {:ex_check, "~> 0.16", only: [:dev], runtime: false},

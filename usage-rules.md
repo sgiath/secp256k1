@@ -4,15 +4,15 @@ Quick reference for `lib_secp256k1` library users. For detailed examples, see [U
 
 ## Data Sizes
 
-| Type | Size | Description |
-|------|------|-------------|
-| `seckey` | 32 bytes | Secret key (private key) |
-| `hash` | 32 bytes | Message hash (SHA256) |
-| `compressed_pubkey` | 33 bytes | Standard Bitcoin pubkey format |
+| Type                  | Size     | Description                       |
+| --------------------- | -------- | --------------------------------- |
+| `seckey`              | 32 bytes | Secret key (private key)          |
+| `hash`                | 32 bytes | Message hash (SHA256)             |
+| `compressed_pubkey`   | 33 bytes | Standard Bitcoin pubkey format    |
 | `uncompressed_pubkey` | 65 bytes | Full pubkey with both coordinates |
-| `xonly_pubkey` | 32 bytes | Schnorr/Taproot/Nostr format |
-| `ecdsa_sig` | 64 bytes | Compact ECDSA signature |
-| `schnorr_sig` | 64 bytes | BIP-340 Schnorr signature |
+| `xonly_pubkey`        | 32 bytes | Schnorr/Taproot/Nostr format      |
+| `ecdsa_sig`           | 64 bytes | Compact ECDSA signature           |
+| `schnorr_sig`         | 64 bytes | BIP-340 Schnorr signature         |
 
 ## Quick Reference
 
@@ -81,13 +81,13 @@ end
 
 ## Common Mistakes
 
-| Mistake | Problem | Fix |
-|---------|---------|-----|
-| Signing raw message | Library expects 32-byte hash | Use `:crypto.hash(:sha256, msg)` first |
-| Wrong pubkey type | ECDSA/Schnorr use different formats | ECDSA: `:compressed`, Schnorr: `:xonly` |
-| Reusing MuSig nonces | Leaks secret key | Always call `nonce_gen/5` fresh |
-| Invalid binary size | Functions raise ArgumentError | Validate sizes: seckey=32, hash=32, etc. |
-| Forgetting to aggregate | MuSig requires full protocol | Follow all 6 steps in MuSig guide |
+| Mistake                 | Problem                             | Fix                                      |
+| ----------------------- | ----------------------------------- | ---------------------------------------- |
+| Signing raw message     | Library expects 32-byte hash        | Use `:crypto.hash(:sha256, msg)` first   |
+| Wrong pubkey type       | ECDSA/Schnorr use different formats | ECDSA: `:compressed`, Schnorr: `:xonly`  |
+| Reusing MuSig nonces    | Leaks secret key                    | Always call `nonce_gen/5` fresh          |
+| Invalid binary size     | Functions raise ArgumentError       | Validate sizes: seckey=32, hash=32, etc. |
+| Forgetting to aggregate | MuSig requires full protocol        | Follow all 6 steps in MuSig guide        |
 
 ## MuSig2 Protocol (Summary)
 

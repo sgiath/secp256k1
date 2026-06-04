@@ -67,6 +67,7 @@ end
 ```
 
 Available guards:
+
 - `is_bin_size(data, size)` - binary of exact byte size
 - `is_hash(data)` - 32 bytes
 - `is_seckey(seckey)` - 32 bytes
@@ -96,6 +97,7 @@ def nif_func(_arg), do: :erlang.nif_error({:error, :not_loaded})
 ```
 
 Return patterns from NIFs:
+
 - Success: raw binary or `{:ok, result}` or `{:ok, a, b}`
 - Failure: `{:error, reason}` or `enif_make_badarg(env)`
 

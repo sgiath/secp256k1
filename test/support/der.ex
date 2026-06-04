@@ -17,7 +17,7 @@ defmodule Secp256k1Test.DER do
 
   defp read_sequence(<<0x30, rest::binary>>) do
     {len, rest} = read_length(rest)
-    <<seq::binary-size(len), remaining::binary>> = rest
+    <<seq::binary-size(^len), remaining::binary>> = rest
     {seq, remaining}
   end
 
@@ -25,7 +25,7 @@ defmodule Secp256k1Test.DER do
 
   defp read_integer(<<0x02, rest::binary>>) do
     {len, rest} = read_length(rest)
-    <<value::binary-size(len), remaining::binary>> = rest
+    <<value::binary-size(^len), remaining::binary>> = rest
     validate_integer(value)
     {value, remaining}
   end

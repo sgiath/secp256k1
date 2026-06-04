@@ -44,8 +44,6 @@ defmodule Secp256k1 do
 
   import Secp256k1.Guards
 
-  require Logger
-
   @typedoc """
   Hash is 32 bytes long binary
   """
