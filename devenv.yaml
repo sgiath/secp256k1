@@ -1,0 +1,12 @@
+inputs:
+  nixpkgs:
+    url: github:NixOS/nixpkgs/master
+
+  git-hooks:
+    url: github:cachix/git-hooks.nix
+    inputs:
+      nixpkgs:
+        follows: nixpkgs
+
+  backlog-md:
+    url: github:MrLesk/Backlog.md/v1.45.2
