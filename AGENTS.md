@@ -1,197 +1,81 @@
-# Secp256k1 Library - Agent Guidelines
+# PROJECT KNOWLEDGE BASE
 
-Elixir NIF bindings for Bitcoin's secp256k1 cryptographic library. Implements ECDSA, Schnorr (BIP340), and MuSig2 (BIP327) signatures.
+## OVERVIEW
 
-## Build Commands
+Elixir bindings for bitcoin-core `secp256k1` v0.7.1. Public Elixir facade delegates to feature modules; each feature module loads its own C NIF shared object from `priv/`.
+
+## STRUCTURE
+
+```text
+./
+|-- lib/              # Elixir facade, feature wrappers, size guards
+|-- c_src/            # first-party C NIF glue; see c_src/AGENTS.md
+|-- test/             # ExUnit helpers, protocol tests, vectors; see test/AGENTS.md
+|-- docs/             # ExDoc source pages, not generated output
+|-- Makefile          # fetch/configure/build upstream secp256k1 + NIF .so files
+`-- usage-rules.md    # user-facing API rules and common mistakes
+```
+
+## WHERE TO LOOK
+
+| Task           | Location                                          | Notes                                          |
+| -------------- | ------------------------------------------------- | ---------------------------------------------- |
+| Public API     | `lib/secp256k1.ex`                                | User-facing facade and typedocs                |
+| ECDSA          | `lib/secp256k1/ecdsa.ex`, `c_src/ecdsa.c`         | Compact 64-byte signatures, compressed pubkeys |
+| Schnorr/BIP340 | `lib/secp256k1/schnorr.ex`, `c_src/schnorrsig.c`  | 32-byte x-only pubkeys                         |
+| ECDH           | `lib/secp256k1/ecdh.ex`, `c_src/ecdh.c`           | libsecp256k1 default hashed shared secret      |
+| X-only keys    | `lib/secp256k1/extrakeys.ex`, `c_src/extrakeys.c` | seckey -> x-only pubkey                        |
+| MuSig2         | `lib/secp256k1/musig.ex`, `c_src/musig.c`         | Experimental resource-backed protocol          |
+| Guards         | `lib/secp256k1/guards.ex`                         | Size checks only; C still validates            |
+| Tests          | `test/AGENTS.md`                                  | Helpers, vectors, subprocess patterns          |
+| Native build   | `Makefile`, `mix.exs`                             | `elixir_make` invokes Makefile                 |
+| Docs           | `README.md`, `docs/*.md`, `usage-rules.md`        | Edit source docs; ignore generated `doc/`      |
+
+## CODE MAP
+
+| Symbol                | Type       | Location                  | Role                                                 |
+| --------------------- | ---------- | ------------------------- | ---------------------------------------------------- |
+| `Secp256k1`           | module     | `lib/secp256k1.ex`        | Public facade: keypair, pubkey, ECDSA, Schnorr, ECDH |
+| `Secp256k1.Guards`    | module     | `lib/secp256k1/guards.ex` | Shared binary-size guards                            |
+| `Secp256k1.MuSig`     | module     | `lib/secp256k1/musig.ex`  | Process-local resource API for MuSig2                |
+| `load/upgrade/unload` | C helpers  | `c_src/utils.h`           | Per-NIF secp256k1 context lifecycle                  |
+| `secnonce_wrapper`    | C resource | `c_src/musig.c`           | Mutexed one-use secret nonce resource                |
+
+## CONVENTIONS
+
+- App/package name is `:lib_secp256k1`; Elixir namespace is `Secp256k1`.
+- Top-level API delegates to `Secp256k1.*` feature modules; feature modules load NIFs with `@on_load :load_nifs` and `Application.app_dir("priv/<nif>")`.
+- Use `Secp256k1.Guards` before calling NIF stubs. Guards are cheap binary-size prechecks, not full cryptographic validation.
+- NIF stubs return `:erlang.nif_error({:error, :not_loaded})` until native code is loaded.
+- Invalid NIF arguments raise `ArgumentError` through `enif_make_badarg`; operation/allocation/crypto failures return `{:error, reason}`.
+- Formatter covers only `*.exs` and `{lib,test}/**/*.{ex,exs}`. Credo line length is 120 and intentionally disables some noisy checks.
+- `mix check` runs compiler, formatter, unused deps, credo, markdown prettier, and ExUnit.
+- Add an entry to `CHANGELOG.md` for every change that could be interesting to library users.
+
+## ANTI-PATTERNS
+
+- Never reuse MuSig2 nonces. Call `Secp256k1.MuSig.nonce_gen/5` fresh for every signing attempt.
+- Never serialize, copy, or send MuSig `secnonce`, `session`, or `keyagg_cache` as if they were binaries. They are process-local NIF resources.
+- Do not use custom AUX APIs (`ECDSA.sign/3`, `Schnorr.sign32/3`, `Schnorr.sign_custom/3`) unless a test vector explicitly requires it. Prefer 2-arg signers.
+- Do not mix pubkey formats: ECDSA verifies compressed 33-byte pubkeys; Schnorr verifies x-only 32-byte pubkeys.
+- Do not edit `c_src/secp256k1/`, `_build/`, `deps/`, `doc/`, or `priv/*.so` as source. They are fetched, generated, or build output.
+- Do not weaken vector tests or delete failing cases. Fix implementation or update vectors only with provenance.
+
+## COMMANDS
 
 ```bash
-mix deps.get              # fetch dependencies
-mix compile               # compile elixir + C NIFs (uses elixir_make)
-mix test                  # run all tests
-mix test path/to/test.exs # run specific test file
-mix check                 # run all checks (compiler, formatter, credo, tests)
+mix deps.get
+mix compile
+mix test
+mix test test/secp256k1/ecdsa_test.exs:20
+mix check
+make clean
+make distclean
 ```
 
-### Clean/Rebuild
+## NOTES
 
-```bash
-mix clean                 # clean elixir build artifacts
-make clean                # clean NIF .so files
-make distclean            # clean everything including fetched C library
-```
-
-## Project Structure
-
-```
-lib/
-  secp256k1.ex           # main public API module (delegates to submodules)
-  secp256k1/
-    ecdsa.ex             # ECDSA signatures (NIF: priv/ecdsa.so)
-    schnorr.ex           # Schnorr signatures (NIF: priv/schnorrsig.so)
-    extrakeys.ex         # x-only pubkey derivation (NIF: priv/extrakeys.so)
-    musig.ex             # MuSig2 multi-signatures (NIF: priv/musig.so) [EXPERIMENTAL]
-    guards.ex            # custom guards (is_seckey, is_hash, etc.)
-test/
-  support/
-    case.ex              # base test case template
-    format.ex            # test helpers: d/1 (decode hex), e/1 (encode hex)
-    vectors.ex           # loads BIP340, Wycheproof, MuSig2 test vectors
-    der.ex               # DER signature parsing for Wycheproof
-  secp256k1_test.exs     # main module tests
-  secp256k1/
-    ecdsa_test.exs       # ECDSA tests
-    schnorr_test.exs     # Schnorr tests
-    schnorr_bip340_test.exs   # BIP340 vector tests
-    ecdsa_wycheproof_test.exs # Wycheproof vector tests
-    extrakeys_test.exs   # extrakeys tests
-    musig_test.exs       # MuSig integration tests
-    musig_vectors_test.exs    # MuSig2 vector tests
-c_src/
-  *.c                    # NIF implementations (one .c → one .so)
-  *.h                    # shared utilities (random.h, utils.h)
-  secp256k1/             # cloned bitcoin-core/secp256k1 v0.7.1 (auto-fetched)
-```
-
-## Code Style
-
-### Guards
-
-Use guards from `Secp256k1.Guards` for input validation:
-
-```elixir
-import Secp256k1.Guards
-
-def sign(msg_hash, seckey) when is_hash(msg_hash) and is_seckey(seckey) do
-  # ...
-end
-```
-
-Available guards:
-
-- `is_bin_size(data, size)` - binary of exact byte size
-- `is_hash(data)` - 32 bytes
-- `is_seckey(seckey)` - 32 bytes
-- `is_compressed_pubkey(pubkey)` - 33 bytes
-- `is_uncompressed_pubkey(pubkey)` - 65 bytes
-- `is_xonly_pubkey(pubkey)` - 32 bytes
-- `is_pubkey(pubkey)` - any pubkey type (32, 33, or 65 bytes)
-- `is_ecdsa_sig(sig)` - 64 bytes
-- `is_schnorr_sig(sig)` - 64 bytes
-
-### NIF Module Pattern
-
-Each NIF module loads its own `.so` file via `@on_load`:
-
-```elixir
-@on_load :load_nifs
-
-defp load_nifs do
-  :lib_secp256k1
-  |> Application.app_dir("priv/ecdsa")
-  |> String.to_charlist()
-  |> :erlang.load_nif(0)
-end
-
-# NIF stubs return error if not loaded
-def nif_func(_arg), do: :erlang.nif_error({:error, :not_loaded})
-```
-
-Return patterns from NIFs:
-
-- Success: raw binary or `{:ok, result}` or `{:ok, a, b}`
-- Failure: `{:error, reason}` or `enif_make_badarg(env)`
-
-### MuSig2 Security
-
-**CRITICAL**: Never reuse nonces in MuSig2. Call `nonce_gen/5` fresh for every signature attempt. Reusing a nonce leaks the secret key.
-
-The `secnonce` is returned as an Erlang resource (not binary) to prevent copying. It's consumed on use and securely erased.
-
-## Testing Patterns
-
-### Test Helpers
-
-- `d/1` - decode lowercase hex to binary: `d("abcd")` → `<<0xAB, 0xCD>>`
-- `e/1` - encode binary to lowercase hex: `e(<<0xAB>>)` → `"ab"`
-
-### Running Tests
-
-```bash
-mix test test/secp256k1/ecdsa_test.exs:20  # run test at line 20
-mix test test/secp256k1_test.exs --trace   # verbose output
-```
-
-### Vector-Driven Tests
-
-Tests use compile-time generation from external vectors:
-
-```elixir
-@vectors Vectors.load_bip340()
-
-for vector <- @vectors do
-  test "BIP-340 ##{vector.index}: #{vector.comment}" do
-    # Each vector becomes a separate test
-  end
-end
-```
-
-## C NIF Guidelines
-
-### Structure
-
-- Include `utils.h` for common helpers (`ctx`, `error_result`, `secure_erase`)
-- Use `ErlNifBinary` for binary data
-- Return `enif_make_badarg(env)` for invalid inputs
-- Return `error_result(env, "message")` for operation failures
-- Always `secure_erase` sensitive data before returning
-
-### NIF Registration
-
-```c
-static ErlNifFunc nif_funcs[] = {
-  {"function_name", arity, c_function_name}
-};
-
-ERL_NIF_INIT(Elixir.Secp256k1.Module, nif_funcs, &load, NULL, &upgrade, &unload)
-```
-
-### Resource Types (MuSig)
-
-For sensitive data that must not be copied (like secret nonces):
-
-```c
-static ErlNifResourceType *secnonce_resource_type;
-
-// In load():
-secnonce_resource_type = enif_open_resource_type(
-  env, NULL, "secnonce_resource", destruct_secnonce,
-  ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER, NULL
-);
-```
-
-## Anti-Patterns
-
-- **AUX parameter functions**: `sign/3` and `sign32/3` accept custom AUX values - NOT RECOMMENDED. Use the 2-arg versions which generate random AUX.
-- **Skipping guards**: Always validate inputs with guards before calling NIFs.
-- **Copying secnonces**: MuSig secnonces are resources, not binaries - don't try to serialize them.
-
-## BACKLOG WORKFLOW INSTRUCTIONS
-
-This project uses Backlog.md MCP for all task and project management activities.
-
-**CRITICAL GUIDANCE**
-
-- If your client supports MCP resources, read `backlog://workflow/overview` to understand when and how to use Backlog for this project.
-- If your client only supports tools or the above request fails, call `backlog.get_backlog_instructions()` to load the tool-oriented overview. Use the `instruction` selector when you need `task-creation`, `task-execution`, or `task-finalization`.
-
-- **First time working here?** Read the overview resource IMMEDIATELY to learn the workflow
-- **Already familiar?** You should have the overview cached ("## Backlog.md Overview (MCP)")
-- **When to read it**: BEFORE creating tasks, or when you're unsure whether to track work
-
-These guides cover:
-- Decision framework for when to create tasks
-- Search-first workflow to avoid duplicates
-- Links to detailed guides for task creation, execution, and finalization
-- MCP tools reference
-
-You MUST read the overview resource to understand the complete workflow. The information is NOT summarized here.
+- `Makefile` clones upstream `bitcoin-core/secp256k1` at `v0.7.1`, configures `--enable-experimental --enable-module-musig`, builds a static lib, then links one `priv/*.so` per `c_src/*.c`.
+- `ERTS_INCLUDE_DIR` must be set for native compilation; `elixir_make` usually supplies it.
+- `mix clean` maps to native `distclean`, deleting fetched `c_src/secp256k1/`.
+- Backlog.md MCP is the project task system. Use MCP tools for task creation/editing; do not edit backlog markdown directly.
