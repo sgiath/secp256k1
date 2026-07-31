@@ -41,13 +41,29 @@ LDFLAGS ?=
 LIBS ?=
 
 # add macOS specific LDFLAGS
+# `uname -s` describes the build host, not the build target, so it must not be
+# used on its own to pick target specific flags. When cross compiling (e.g.
+# building for Nerves/Linux from macOS) the toolchain sets CROSSCOMPILE, and
+# passing `-undefined dynamic_lookup` to the target's GNU ld makes it look for a
+# file named `dynamic_lookup` and fail with "C compiler cannot create
+# executables". Only add the flag for native macOS builds.
 OS := $(shell uname -s)
-ifeq ($(OS), Darwin)
-  LDFLAGS += -undefined dynamic_lookup
+ifeq ($(CROSSCOMPILE),)
+  ifeq ($(OS), Darwin)
+    LDFLAGS += -undefined dynamic_lookup
+  endif
 endif
 
 # --- secp256k1 Library Options ---
 CONFIG_OPTS = --disable-benchmark --disable-tests --disable-fast-install --with-pic --enable-experimental --enable-module-musig
+
+# autotools needs `--host` when cross compiling, otherwise configure tries to
+# run the test binaries it just built for the target and aborts with "cannot run
+# C compiled programs". CROSSCOMPILE holds the toolchain prefix (for example
+# /path/to/bin/aarch64-nerves-linux-gnu), so its basename is the target triplet.
+ifneq ($(CROSSCOMPILE),)
+  CONFIG_OPTS += --host=$(notdir $(CROSSCOMPILE))
+endif
 
 # --- Source Files & Targets ---
 NIF_SOURCES = $(wildcard $(SRC_DIR)/*.c)
