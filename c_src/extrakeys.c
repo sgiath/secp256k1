@@ -73,6 +73,45 @@ cleanup:
 }
 
 static ERL_NIF_TERM
+xonly_pubkey_from_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+{
+  (void)argc;
+
+  ERL_NIF_TERM result;
+  ErlNifBinary input;
+  secp256k1_pubkey pubkey;
+  secp256k1_xonly_pubkey xonly_pubkey;
+  unsigned char serialized_pubkey[32];
+
+  if (!enif_inspect_binary(env, argv[0], &input) || input.size != 33)
+  {
+    return enif_make_badarg(env);
+  }
+
+  if (!secp256k1_ec_pubkey_parse(ctx, &pubkey, input.data, input.size))
+  {
+    return error_result(env, "secp256k1_ec_pubkey_parse failed");
+  }
+
+  if (!secp256k1_xonly_pubkey_from_pubkey(ctx, &xonly_pubkey, NULL, &pubkey))
+  {
+    return error_result(env, "secp256k1_xonly_pubkey_from_pubkey failed");
+  }
+
+  if (!secp256k1_xonly_pubkey_serialize(ctx, serialized_pubkey, &xonly_pubkey))
+  {
+    return error_result(env, "secp256k1_xonly_pubkey_serialize failed");
+  }
+
+  if (!make_binary(env, serialized_pubkey, sizeof(serialized_pubkey), &result))
+  {
+    return error_result(env, "enif_alloc_binary failed");
+  }
+
+  return result;
+}
+
+static ERL_NIF_TERM
 ec_seckey_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
   (void)argc;
@@ -299,6 +338,7 @@ xonly_pubkey_tweak_add_check(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]
 
 static ErlNifFunc nif_funcs[] = {
     {"xonly_pubkey_nif", 1, xonly_pubkey},
+    {"xonly_pubkey_from_pubkey_nif", 1, xonly_pubkey_from_pubkey},
     {"ec_seckey_tweak_add_nif", 2, ec_seckey_tweak_add},
     {"ec_pubkey_tweak_add_nif", 2, ec_pubkey_tweak_add},
     {"xonly_seckey_tweak_add_nif", 2, xonly_seckey_tweak_add},

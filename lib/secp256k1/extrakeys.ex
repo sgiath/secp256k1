@@ -6,7 +6,11 @@ defmodule Secp256k1.Extrakeys do
   import Secp256k1.Guards
 
   @doc """
-  Derive xonly pubkey from seckey
+  Derives or converts an x-only public key.
+
+  A 32-byte secret key derives its x-only public key. A 33-byte compressed public
+  key is converted without requiring its secret key; its parity prefix is omitted
+  from the returned serialization.
 
   ## Examples
 
@@ -16,8 +20,12 @@ defmodule Secp256k1.Extrakeys do
       32
 
   """
-  @spec xonly_pubkey(Secp256k1.seckey()) :: Secp256k1.xonly_pubkey()
+  @spec xonly_pubkey(Secp256k1.seckey() | Secp256k1.compressed_pubkey()) ::
+          Secp256k1.xonly_pubkey() | {:error, binary() | :allocation_failed}
   def xonly_pubkey(seckey) when is_seckey(seckey), do: xonly_pubkey_nif(seckey)
+
+  def xonly_pubkey(pubkey) when is_compressed_pubkey(pubkey),
+    do: xonly_pubkey_from_pubkey_nif(pubkey)
 
   @doc """
   Adds a scalar tweak to a secret key.
@@ -95,6 +103,9 @@ defmodule Secp256k1.Extrakeys do
 
   @doc false
   def xonly_pubkey_nif(_seckey), do: :erlang.nif_error({:error, :not_loaded})
+
+  @doc false
+  def xonly_pubkey_from_pubkey_nif(_pubkey), do: :erlang.nif_error({:error, :not_loaded})
 
   @doc false
   def ec_seckey_tweak_add_nif(_seckey, _tweak), do: :erlang.nif_error({:error, :not_loaded})

@@ -56,6 +56,19 @@ defmodule Secp256k1Test do
     assert pubkey == p
   end
 
+  test "convert_pubkey/2 converts a received compressed public key to x-only", %{
+    seckey: seckey,
+    pubkey: xonly_pubkey
+  } do
+    compressed_pubkey = Secp256k1.pubkey(seckey, :compressed)
+
+    assert Secp256k1.convert_pubkey(compressed_pubkey, :xonly) == xonly_pubkey
+  end
+
+  test "convert_pubkey/2 returns an error for a malformed compressed public key" do
+    assert {:error, _reason} = Secp256k1.convert_pubkey(<<0::264>>, :xonly)
+  end
+
   test "convert_pubkey/2 converts between compressed and uncompressed formats", %{seckey: seckey} do
     compressed_pubkey = Secp256k1.pubkey(seckey, :compressed)
     uncompressed_pubkey = Secp256k1.pubkey(seckey, :uncompressed)
@@ -98,6 +111,11 @@ defmodule Secp256k1Test do
   end
 
   test "facade rejects invalid sizes at its own public boundary" do
+    convert_xonly_error =
+      assert_raise FunctionClauseError, fn ->
+        Secp256k1.convert_pubkey(<<1>>, :xonly)
+      end
+
     ecdh_error =
       assert_raise FunctionClauseError, fn ->
         Secp256k1.ecdh(<<1>>, <<1>>)
@@ -123,6 +141,8 @@ defmodule Secp256k1Test do
         Secp256k1.schnorr_valid?(<<1>>, "message", <<1>>)
       end
 
+    assert convert_xonly_error.module == Secp256k1
+    assert convert_xonly_error.function == :convert_pubkey
     assert ecdh_error.module == Secp256k1
     assert ecdh_error.function == :ecdh
     assert ecdsa_sign_error.module == Secp256k1

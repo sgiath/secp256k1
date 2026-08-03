@@ -7,6 +7,9 @@ defmodule Secp256k1Test.Extrakeys do
 
   @generator_x d("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798")
   @generator_compressed d("0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798")
+  @negated_generator_compressed d(
+                                  "0379be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+                                )
   @point_two_x d("c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5")
   @point_two_compressed d("02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5")
   @curve_order d("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141")
@@ -33,6 +36,15 @@ defmodule Secp256k1Test.Extrakeys do
 
   test "rejects invalid-sized secret keys" do
     assert_raise FunctionClauseError, fn -> Extrakeys.xonly_pubkey(<<1>>) end
+  end
+
+  test "converts a compressed public key to x-only form" do
+    assert Extrakeys.xonly_pubkey(@generator_compressed) == @generator_x
+    assert Extrakeys.xonly_pubkey(@negated_generator_compressed) == @generator_x
+  end
+
+  test "rejects malformed compressed public keys" do
+    assert {:error, _reason} = Extrakeys.xonly_pubkey(<<0::264>>)
   end
 
   test "adds a scalar tweak to secret and public keys" do

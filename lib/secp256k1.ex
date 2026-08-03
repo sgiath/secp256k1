@@ -137,22 +137,23 @@ defmodule Secp256k1 do
   end
 
   @doc """
-  Convert an ECDSA public key between compressed and uncompressed formats.
+  Convert a public key to another serialization format.
 
   Inputs
     - `pubkey` an uncompressed public key when converting to `:compressed`, or a compressed public
-      key when converting to `:uncompressed`
-    - `type` the target format, either `:compressed` or `:uncompressed`
+      key when converting to `:uncompressed` or `:xonly`
+    - `type` the target format, either `:compressed`, `:uncompressed`, or `:xonly`
 
   Returns the converted public key, or `{:error, reason}` when the correctly sized input does not
   encode a valid secp256k1 public key.
   """
   @spec convert_pubkey(
           pubkey :: compressed_pubkey() | uncompressed_pubkey(),
-          type :: :compressed | :uncompressed
+          type :: :compressed | :uncompressed | :xonly
         ) ::
           compressed_pubkey()
           | uncompressed_pubkey()
+          | xonly_pubkey()
           | {:error, binary() | :allocation_failed}
   def convert_pubkey(pubkey, :compressed) when is_uncompressed_pubkey(pubkey) do
     Secp256k1.ECDSA.compress_pubkey(pubkey)
@@ -160,6 +161,10 @@ defmodule Secp256k1 do
 
   def convert_pubkey(pubkey, :uncompressed) when is_compressed_pubkey(pubkey) do
     Secp256k1.ECDSA.decompress_pubkey(pubkey)
+  end
+
+  def convert_pubkey(pubkey, :xonly) when is_compressed_pubkey(pubkey) do
+    Secp256k1.Extrakeys.xonly_pubkey(pubkey)
   end
 
   @doc """

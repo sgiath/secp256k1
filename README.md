@@ -64,6 +64,9 @@ end
 
 # Derive pubkey from existing secret key
 pubkey = Secp256k1.pubkey(seckey, :compressed)
+
+# Convert a received compressed pubkey without owning its secret key
+xonly_pubkey = Secp256k1.convert_pubkey(pubkey, :xonly)
 ```
 
 ### Derive Tweaked Keys

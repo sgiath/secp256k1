@@ -27,6 +27,9 @@ Quick reference for `lib_secp256k1` library users. For detailed examples, see [U
 
 # Derive pubkey from existing seckey
 pubkey = Secp256k1.pubkey(seckey, :compressed)
+
+# Convert a received compressed pubkey without its seckey
+xonly_pubkey = Secp256k1.convert_pubkey(pubkey, :xonly)
 ```
 
 ### Key Tweaks (BIP-32 and Taproot)

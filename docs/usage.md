@@ -72,6 +72,16 @@ pubkey = Secp256k1.pubkey(seckey, :compressed)
 xonly_pubkey = Secp256k1.pubkey(seckey, :xonly)
 ```
 
+If you receive a compressed public key but do not own its secret key, convert it
+directly to the 32-byte x-only format:
+
+```elixir
+xonly_pubkey = Secp256k1.convert_pubkey(compressed_pubkey, :xonly)
+```
+
+The conversion removes the compressed key's parity prefix and does not require
+secret-key material.
+
 ### Key Tweaks
 
 Full-key tweaks support BIP-32-style private and public derivation. Both operations
