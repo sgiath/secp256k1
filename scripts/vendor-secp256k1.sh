@@ -130,11 +130,26 @@ else
 fi
 readonly TAG_VERIFICATION
 
-COMMIT="$(git -C "$TMP/src" rev-parse 'HEAD^{commit}')"
-if [[ ! "$COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
-  die "peeled tag commit is not a 40-character lowercase hexadecimal object ID: $COMMIT"
+if ! TAG_COMMIT="$(git -C "$TMP/src" rev-parse "refs/tags/$VERSION^{commit}")"; then
+  die "could not resolve verified tag refs/tags/$VERSION to a commit"
 fi
-readonly COMMIT
+if [[ ! "$TAG_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+  die "verified tag commit is not a 40-character lowercase hexadecimal object ID: $TAG_COMMIT"
+fi
+
+if ! HEAD_COMMIT="$(git -C "$TMP/src" rev-parse 'HEAD^{commit}')"; then
+  die "could not resolve cloned HEAD to a commit"
+fi
+if [[ ! "$HEAD_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+  die "cloned HEAD commit is not a 40-character lowercase hexadecimal object ID: $HEAD_COMMIT"
+fi
+
+if [[ "$HEAD_COMMIT" != "$TAG_COMMIT" ]]; then
+  die "verified tag commit $TAG_COMMIT does not match cloned HEAD commit $HEAD_COMMIT"
+fi
+
+COMMIT="$TAG_COMMIT"
+readonly TAG_COMMIT HEAD_COMMIT COMMIT
 log "Recorded peeled tag commit $COMMIT"
 
 log "Generating release build system with autogen.sh"
