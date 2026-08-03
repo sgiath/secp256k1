@@ -2,6 +2,11 @@
 
 ## unreleased
 
+- Consolidate five feature NIF shared objects into one `priv/secp256k1_nif.so`, reducing the native footprint by approximately 80% by embedding libsecp256k1 and its precomputed tables once instead of five times
+- Move the secp256k1 context and MuSig resource types from C statics into per-instance `priv_data`, fixing hot-upgrade context leaks and use-after-free risks
+- Add Elixir shape guards to MuSig2 public functions: malformed shapes raise `FunctionClauseError`, while valid-shape invalid content and forged resources raise `ArgumentError` from the NIF
+- Remove internal `@doc false` `*_nif` stubs from feature modules without compatibility aliases
+- Treat resources created by legacy per-feature NIF libraries as invalid when crossing into the consolidated library. Same-library hot upgrades preserve compatible resources through `ERL_NIF_RT_TAKEOVER`; cross-library resources are not migrated
 - Run list-based MuSig2 key, nonce, and partial-signature aggregation on CPU-bound dirty schedulers
 - Make invalid-sized binary arguments to stable APIs fail at public Elixir boundaries with `FunctionClauseError`
 - Expose compressed and uncompressed ECDSA public-key conversion through `Secp256k1.convert_pubkey/2`
