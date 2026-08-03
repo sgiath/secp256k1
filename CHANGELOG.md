@@ -2,6 +2,7 @@
 
 ## unreleased
 
+- Expose full-key scalar tweaks for BIP-32 derivation and x-only key tweaks, parity checks, and signing keys for Taproot
 - Run list-based MuSig2 key, nonce, and partial-signature aggregation on CPU-bound dirty schedulers
 - Make invalid-sized binary arguments to stable APIs fail at public Elixir boundaries with `FunctionClauseError`
 - Expose compressed and uncompressed ECDSA public-key conversion through `Secp256k1.convert_pubkey/2`

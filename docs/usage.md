@@ -72,6 +72,45 @@ pubkey = Secp256k1.pubkey(seckey, :compressed)
 xonly_pubkey = Secp256k1.pubkey(seckey, :xonly)
 ```
 
+### Key Tweaks
+
+Full-key tweaks support BIP-32-style private and public derivation. Both operations
+add the same scalar, so deriving a public key from the tweaked secret key produces
+the same point as tweaking the original public key.
+
+```elixir
+# Raw arithmetic example only. Derive this scalar according to BIP-32 or BIP-341.
+tweak = <<1::256>>
+compressed_pubkey = Secp256k1.pubkey(seckey, :compressed)
+
+tweaked_seckey = Secp256k1.ec_seckey_tweak_add(seckey, tweak)
+tweaked_pubkey = Secp256k1.ec_pubkey_tweak_add(compressed_pubkey, tweak)
+
+Secp256k1.pubkey(tweaked_seckey, :compressed) == tweaked_pubkey
+# => true
+```
+
+For Taproot, tweak the even-Y x-only internal key. Public tweaking returns the output
+key and its full-point parity. Secret tweaking performs the same even-Y normalization,
+so the resulting secret key signs for that output key.
+
+```elixir
+internal_pubkey = Secp256k1.pubkey(seckey, :xonly)
+{:ok, output_pubkey, parity} = Secp256k1.xonly_pubkey_tweak_add(internal_pubkey, tweak)
+
+true =
+  Secp256k1.xonly_pubkey_tweak_add_check(output_pubkey, parity, internal_pubkey, tweak)
+
+output_seckey = Secp256k1.xonly_seckey_tweak_add(seckey, tweak)
+Secp256k1.pubkey(output_seckey, :xonly) == output_pubkey
+# => true
+```
+
+All tweaks are 32-byte big-endian scalars. Zero is valid; values at or above the
+curve order and tweaks that produce an invalid key return `{:error, reason}`. These
+functions perform key arithmetic only. Applications must derive child-key tweaks
+according to BIP-32 or commitment tweaks according to BIP-341.
+
 ## ECDSA Signatures
 
 ECDSA is the traditional signature scheme used in Bitcoin and other cryptocurrencies.

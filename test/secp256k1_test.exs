@@ -68,6 +68,25 @@ defmodule Secp256k1Test do
     assert {:error, _reason} = Secp256k1.convert_pubkey(<<0::520>>, :compressed)
   end
 
+  test "key tweak facade exposes plain and x-only derivation" do
+    seckey = <<1::256>>
+    tweak = <<1::256>>
+    compressed_pubkey = Secp256k1.pubkey(seckey, :compressed)
+    internal_pubkey = Secp256k1.pubkey(seckey, :xonly)
+
+    assert Secp256k1.ec_seckey_tweak_add(seckey, tweak) == <<2::256>>
+
+    assert Secp256k1.ec_pubkey_tweak_add(compressed_pubkey, tweak) ==
+             Secp256k1.pubkey(<<2::256>>, :compressed)
+
+    assert Secp256k1.xonly_seckey_tweak_add(seckey, tweak) == <<2::256>>
+
+    assert {:ok, tweaked_pubkey, parity} =
+             Secp256k1.xonly_pubkey_tweak_add(internal_pubkey, tweak)
+
+    assert Secp256k1.xonly_pubkey_tweak_add_check(tweaked_pubkey, parity, internal_pubkey, tweak)
+  end
+
   test "ecdsa_valid?/3 accepts compressed and uncompressed public keys" do
     {seckey, compressed_pubkey} = Secp256k1.keypair(<<1::256>>, :compressed)
     uncompressed_pubkey = Secp256k1.pubkey(seckey, :uncompressed)

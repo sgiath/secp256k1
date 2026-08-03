@@ -66,6 +66,16 @@ defmodule Secp256k1 do
   @type seckey() :: <<_::256>>
 
   @typedoc """
+  Scalar tweak is a 32-byte big-endian integer
+  """
+  @type tweak() :: <<_::256>>
+
+  @typedoc """
+  Parity of a full public key represented in x-only form
+  """
+  @type pubkey_parity() :: 0 | 1
+
+  @typedoc """
   Pubkey can be parsed in compressed (33 bytes), uncompressed (65 bytes) or xonly (32 bytes) format
   """
   @type pubkey_type() :: :compressed | :uncompressed | :xonly
@@ -150,6 +160,83 @@ defmodule Secp256k1 do
 
   def convert_pubkey(pubkey, :uncompressed) when is_compressed_pubkey(pubkey) do
     Secp256k1.ECDSA.decompress_pubkey(pubkey)
+  end
+
+  @doc """
+  Adds a scalar tweak to a secret key for BIP-32-style private derivation.
+
+  Returns an error when the tweak is outside the scalar field or the resulting key
+  would be zero.
+  """
+  @spec ec_seckey_tweak_add(seckey(), tweak()) ::
+          seckey() | {:error, binary() | :allocation_failed}
+  def ec_seckey_tweak_add(seckey, tweak) when is_seckey(seckey) and is_tweak(tweak) do
+    Secp256k1.Extrakeys.ec_seckey_tweak_add(seckey, tweak)
+  end
+
+  @doc """
+  Adds a scalar multiple of the generator to a compressed or uncompressed public key.
+
+  The output preserves the input serialization format. This is the public-key
+  counterpart of `ec_seckey_tweak_add/2` for BIP-32-style public derivation.
+  """
+  @spec ec_pubkey_tweak_add(compressed_pubkey() | uncompressed_pubkey(), tweak()) ::
+          compressed_pubkey()
+          | uncompressed_pubkey()
+          | {:error, binary() | :allocation_failed}
+  def ec_pubkey_tweak_add(pubkey, tweak)
+      when (is_compressed_pubkey(pubkey) or is_uncompressed_pubkey(pubkey)) and
+             is_tweak(tweak) do
+    Secp256k1.Extrakeys.ec_pubkey_tweak_add(pubkey, tweak)
+  end
+
+  @doc """
+  Tweaks a secret key using x-only semantics for signing Taproot outputs.
+
+  The keypair is normalized to an even-Y internal public key before adding the tweak.
+  """
+  @spec xonly_seckey_tweak_add(seckey(), tweak()) ::
+          seckey() | {:error, binary() | :allocation_failed}
+  def xonly_seckey_tweak_add(seckey, tweak)
+      when is_seckey(seckey) and is_tweak(tweak) do
+    Secp256k1.Extrakeys.xonly_seckey_tweak_add(seckey, tweak)
+  end
+
+  @doc """
+  Adds a scalar tweak to an x-only internal public key.
+
+  Returns the x-only output key and its full-point parity. Keep both values when
+  constructing and verifying Taproot commitments.
+  """
+  @spec xonly_pubkey_tweak_add(xonly_pubkey(), tweak()) ::
+          {:ok, xonly_pubkey(), pubkey_parity()}
+          | {:error, binary() | :allocation_failed}
+  def xonly_pubkey_tweak_add(internal_pubkey, tweak)
+      when is_xonly_pubkey(internal_pubkey) and is_tweak(tweak) do
+    Secp256k1.Extrakeys.xonly_pubkey_tweak_add(internal_pubkey, tweak)
+  end
+
+  @doc """
+  Checks an x-only public-key tweak result and parity.
+
+  This verifies the key arithmetic only. The caller remains responsible for deriving
+  the tweak according to BIP-341 when using it as a Taproot commitment.
+  """
+  @spec xonly_pubkey_tweak_add_check(
+          xonly_pubkey(),
+          pubkey_parity(),
+          xonly_pubkey(),
+          tweak()
+        ) :: boolean()
+  def xonly_pubkey_tweak_add_check(tweaked_pubkey, parity, internal_pubkey, tweak)
+      when is_xonly_pubkey(tweaked_pubkey) and parity in [0, 1] and
+             is_xonly_pubkey(internal_pubkey) and is_tweak(tweak) do
+    Secp256k1.Extrakeys.xonly_pubkey_tweak_add_check(
+      tweaked_pubkey,
+      parity,
+      internal_pubkey,
+      tweak
+    )
   end
 
   @doc """

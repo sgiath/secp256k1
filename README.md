@@ -15,6 +15,7 @@ Elixir NIF bindings for the [bitcoin-core/secp256k1](https://github.com/bitcoin-
 ## Features
 
 - **Keypair generation** - secure random secret keys with compressed, uncompressed, or x-only public keys
+- **Key tweaks** - BIP-32-style full-key derivation and x-only Taproot commitments
 - **ECDSA signatures** - sign and verify using the traditional Bitcoin signature scheme
 - **Schnorr signatures** - BIP-340 compatible, used in Taproot and Nostr
 - **MuSig2** - BIP-327 multi-party Schnorr signatures (experimental)
@@ -64,6 +65,29 @@ end
 # Derive pubkey from existing secret key
 pubkey = Secp256k1.pubkey(seckey, :compressed)
 ```
+
+### Derive Tweaked Keys
+
+```elixir
+# Raw arithmetic example only. Derive this scalar according to BIP-32 or BIP-341.
+tweak = <<1::256>>
+
+# BIP-32-style private/public derivation
+tweaked_seckey = Secp256k1.ec_seckey_tweak_add(seckey, tweak)
+tweaked_pubkey = Secp256k1.ec_pubkey_tweak_add(pubkey, tweak)
+
+# Taproot-style x-only output key and the parity needed to verify it
+internal_pubkey = Secp256k1.pubkey(seckey, :xonly)
+{:ok, output_pubkey, parity} = Secp256k1.xonly_pubkey_tweak_add(internal_pubkey, tweak)
+true = Secp256k1.xonly_pubkey_tweak_add_check(output_pubkey, parity, internal_pubkey, tweak)
+
+# Secret key that signs for output_pubkey
+tweaked_seckey = Secp256k1.xonly_seckey_tweak_add(seckey, tweak)
+```
+
+The caller is responsible for deriving BIP-32 child tweaks or BIP-341 Taproot
+commitment tweaks. Correctly sized tweaks can still be invalid scalars; tweak-add
+functions return `{:error, reason}` when libsecp256k1 rejects one.
 
 ### ECDSA Signatures
 

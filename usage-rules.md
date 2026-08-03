@@ -7,6 +7,7 @@ Quick reference for `lib_secp256k1` library users. For detailed examples, see [U
 | Type                  | Size     | Description                       |
 | --------------------- | -------- | --------------------------------- |
 | `seckey`              | 32 bytes | Secret key (private key)          |
+| `tweak`               | 32 bytes | Big-endian scalar for key tweaks  |
 | `hash`                | 32 bytes | Message hash (SHA256)             |
 | `compressed_pubkey`   | 33 bytes | Standard Bitcoin pubkey format    |
 | `uncompressed_pubkey` | 65 bytes | Full pubkey with both coordinates |
@@ -26,6 +27,21 @@ Quick reference for `lib_secp256k1` library users. For detailed examples, see [U
 
 # Derive pubkey from existing seckey
 pubkey = Secp256k1.pubkey(seckey, :compressed)
+```
+
+### Key Tweaks (BIP-32 and Taproot)
+
+```elixir
+# Raw arithmetic example only. Derive this scalar according to BIP-32 or BIP-341.
+tweak = <<1::256>>
+
+tweaked_seckey = Secp256k1.ec_seckey_tweak_add(seckey, tweak)
+tweaked_pubkey = Secp256k1.ec_pubkey_tweak_add(pubkey, tweak)
+
+internal_pubkey = Secp256k1.pubkey(seckey, :xonly)
+{:ok, output_pubkey, parity} = Secp256k1.xonly_pubkey_tweak_add(internal_pubkey, tweak)
+true = Secp256k1.xonly_pubkey_tweak_add_check(output_pubkey, parity, internal_pubkey, tweak)
+output_seckey = Secp256k1.xonly_seckey_tweak_add(seckey, tweak)
 ```
 
 ### ECDSA (Bitcoin legacy)
@@ -53,6 +69,7 @@ true = Secp256k1.schnorr_valid?(signature, msg_hash, xonly_pubkey)  # x-only pub
 - **Use x-only pubkeys for Schnorr**: `schnorr_valid?/3` expects 32-byte x-only pubkeys.
 - **Generate fresh keypairs securely**: `Secp256k1.keypair/1` uses `:crypto.strong_rand_bytes/1`.
 - **Validate inputs early**: Check binary sizes before passing to library functions.
+- **Keep x-only output parity**: Taproot tweak verification requires both the output key and parity.
 
 ### DON'T
 
@@ -61,6 +78,7 @@ true = Secp256k1.schnorr_valid?(signature, msg_hash, xonly_pubkey)  # x-only pub
 - **Don't mix pubkey formats**: ECDSA uses compressed (33 bytes) or uncompressed (65 bytes); Schnorr uses x-only (32 bytes).
 - **Don't sign unhashed data**: The library expects pre-hashed 32-byte messages for most operations.
 - **Don't serialize MuSig secnonces**: They're Erlang resources, not binaries. Attempting to copy them will fail.
+- **Don't treat key tweaking as hashing**: Derive the scalar according to BIP-32 or BIP-341 before calling the tweak API.
 
 ## Error Handling
 

@@ -19,6 +19,11 @@ defmodule Secp256k1.Guards do
   defguard is_seckey(seckey) when is_bin_size(seckey, 32)
 
   @doc """
+  Is scalar tweak (probably) - binary 32 bytes long
+  """
+  defguard is_tweak(tweak) when is_bin_size(tweak, 32)
+
+  @doc """
   Is compressed pubkey (probably) - binary 33 bytes long
   """
   defguard is_compressed_pubkey(pubkey) when is_bin_size(pubkey, 33)
