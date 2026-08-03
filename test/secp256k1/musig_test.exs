@@ -262,6 +262,7 @@ defmodule Secp256k1.MuSigTest do
     end
   end
 
+  @tag :expensive
   test "formerly aborting malformed cache probes only raise in child BEAM" do
     assert_subprocess_argument_error("""
     alias Secp256k1.MuSig
@@ -287,6 +288,7 @@ defmodule Secp256k1.MuSigTest do
     """)
   end
 
+  @tag :expensive
   test "formerly aborting malformed session probe only raises in child BEAM" do
     assert_subprocess_argument_error("""
     alias Secp256k1.MuSig
