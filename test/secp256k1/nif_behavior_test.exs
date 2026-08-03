@@ -1,7 +1,11 @@
 defmodule Secp256k1Test.NifBehavior do
   use Secp256k1Test.Case, async: true
 
-  alias Secp256k1.{ECDH, ECDSA, Extrakeys, MuSig, Schnorr}
+  alias Secp256k1.ECDH
+  alias Secp256k1.ECDSA
+  alias Secp256k1.Extrakeys
+  alias Secp256k1.MuSig
+  alias Secp256k1.Schnorr
 
   test "MuSig resource APIs reject forged references" do
     state = signing_state()
@@ -28,6 +32,60 @@ defmodule Secp256k1Test.NifBehavior do
     assert_raise ArgumentError, fn ->
       MuSig.partial_sig_agg(state.session, [:binary.copy(<<255>>, 32)])
     end
+  end
+
+  test "MuSig public APIs reject malformed argument shapes at the wrapper boundary" do
+    opaque_term = fn term ->
+      term
+      |> :erlang.term_to_binary()
+      |> :erlang.binary_to_term([:safe])
+    end
+
+    empty_list = opaque_term.([])
+    hash = <<0::256>>
+    missing_pubkey = opaque_term.(nil)
+    not_a_reference = opaque_term.(:not_a_reference)
+    pubkey = <<0::264>>
+    resource = make_ref()
+    short_nonce = opaque_term.(<<0::520>>)
+    short_scalar = opaque_term.(<<0::248>>)
+
+    assert_raise FunctionClauseError, fn -> MuSig.pubkey_agg(empty_list) end
+    assert_raise FunctionClauseError, fn -> MuSig.pubkey_get(not_a_reference) end
+
+    assert_raise FunctionClauseError, fn ->
+      MuSig.pubkey_ec_tweak_add(resource, short_scalar)
+    end
+
+    assert_raise FunctionClauseError, fn ->
+      MuSig.pubkey_xonly_tweak_add(resource, short_scalar)
+    end
+
+    assert_raise FunctionClauseError, fn ->
+      MuSig.nonce_gen(nil, missing_pubkey, nil, nil, nil)
+    end
+
+    assert_raise FunctionClauseError, fn -> MuSig.nonce_agg(empty_list) end
+
+    assert_raise FunctionClauseError, fn ->
+      MuSig.nonce_process(short_nonce, hash, resource)
+    end
+
+    assert_raise FunctionClauseError, fn ->
+      MuSig.partial_sign(not_a_reference, hash, resource, resource)
+    end
+
+    assert_raise FunctionClauseError, fn ->
+      MuSig.partial_sig_verify(
+        short_scalar,
+        <<0::528>>,
+        pubkey,
+        resource,
+        resource
+      )
+    end
+
+    assert_raise FunctionClauseError, fn -> MuSig.partial_sig_agg(resource, empty_list) end
   end
 
   test "feature NIF operations succeed concurrently across 50 iterations" do

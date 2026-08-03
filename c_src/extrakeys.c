@@ -1,13 +1,15 @@
 #include "utils.h"
+#include "nifs.h"
 
 #include <secp256k1.h>
 #include <secp256k1_extrakeys.h>
 
 // API
 
-static ERL_NIF_TERM
-xonly_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+ERL_NIF_TERM
+secp256k1_nif_xonly_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  secp256k1_context *ctx = nif_ctx(env);
   (void)argc;
 
   ERL_NIF_TERM result;
@@ -56,9 +58,3 @@ cleanup:
   secure_erase(&keypair, sizeof(keypair));
   return result;
 }
-
-static ErlNifFunc nif_funcs[] = {
-    {"xonly_pubkey_nif", 1, xonly_pubkey},
-};
-
-ERL_NIF_INIT(Elixir.Secp256k1.Extrakeys, nif_funcs, &load, NULL, &upgrade, &unload)

@@ -27,24 +27,6 @@ defmodule Secp256k1.ECDH do
   def ecdh(seckey, pubkey)
       when is_seckey(seckey) and
              (is_compressed_pubkey(pubkey) or is_uncompressed_pubkey(pubkey)) do
-    ecdh_nif(seckey, pubkey)
-  end
-
-  @doc false
-  @spec ecdh_nif(
-          seckey :: Secp256k1.seckey(),
-          pubkey :: Secp256k1.compressed_pubkey() | Secp256k1.uncompressed_pubkey()
-        ) :: Secp256k1.shared_secret()
-  def ecdh_nif(_seckey, _pubkey), do: :erlang.nif_error({:error, :not_loaded})
-
-  # internal NIF related
-
-  @on_load :load_nifs
-
-  defp load_nifs do
-    :lib_secp256k1
-    |> Application.app_dir("priv/ecdh")
-    |> String.to_charlist()
-    |> :erlang.load_nif(0)
+    Secp256k1.NIF.ecdh(seckey, pubkey)
   end
 end

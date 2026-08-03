@@ -53,7 +53,7 @@ defmodule Secp256k1.Schnorr do
         ) :: Secp256k1.schnorr_sig()
   def sign32(msg_hash, seckey, aux)
       when is_hash(msg_hash) and is_seckey(seckey) and is_bin_size(aux, 32) do
-    sign32_nif(msg_hash, seckey, aux)
+    Secp256k1.NIF.schnorr_sign32(msg_hash, seckey, aux)
   end
 
   @doc """
@@ -71,7 +71,7 @@ defmodule Secp256k1.Schnorr do
           Secp256k1.schnorr_sig()
   def sign_custom(message, seckey, aux)
       when is_binary(message) and is_seckey(seckey) and is_bin_size(aux, 32) do
-    sign_custom_nif(message, seckey, aux)
+    Secp256k1.NIF.schnorr_sign_custom(message, seckey, aux)
   end
 
   @doc """
@@ -93,26 +93,6 @@ defmodule Secp256k1.Schnorr do
         ) :: boolean()
   def valid?(signature, message, pubkey)
       when is_schnorr_sig(signature) and is_binary(message) and is_xonly_pubkey(pubkey) do
-    valid_nif?(signature, message, pubkey)
-  end
-
-  @doc false
-  def sign32_nif(_msg_hash, _seckey, _aux), do: :erlang.nif_error({:error, :not_loaded})
-
-  @doc false
-  def sign_custom_nif(_message, _seckey, _aux), do: :erlang.nif_error({:error, :not_loaded})
-
-  @doc false
-  def valid_nif?(_signature, _message, _pubkey), do: :erlang.nif_error({:error, :not_loaded})
-
-  # internal NIF related
-
-  @on_load :load_nifs
-
-  defp load_nifs do
-    :lib_secp256k1
-    |> Application.app_dir("priv/schnorrsig")
-    |> String.to_charlist()
-    |> :erlang.load_nif(0)
+    Secp256k1.NIF.schnorr_valid?(signature, message, pubkey)
   end
 end

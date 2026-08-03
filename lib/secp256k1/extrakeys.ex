@@ -17,19 +17,6 @@ defmodule Secp256k1.Extrakeys do
 
   """
   @spec xonly_pubkey(Secp256k1.seckey()) :: Secp256k1.xonly_pubkey()
-  def xonly_pubkey(seckey) when is_seckey(seckey), do: xonly_pubkey_nif(seckey)
-
-  @doc false
-  def xonly_pubkey_nif(_seckey), do: :erlang.nif_error({:error, :not_loaded})
-
-  # internal NIF related
-
-  @on_load :load_nifs
-
-  defp load_nifs do
-    :lib_secp256k1
-    |> Application.app_dir("priv/extrakeys")
-    |> String.to_charlist()
-    |> :erlang.load_nif(0)
-  end
+  def xonly_pubkey(seckey) when is_seckey(seckey),
+    do: Secp256k1.NIF.xonly_pubkey(seckey)
 end

@@ -68,25 +68,31 @@ endif
 
 # --- Source Files & Targets ---
 NIF_SOURCES = $(wildcard $(SRC_DIR)/*.c)
-NIF_TARGETS = $(patsubst $(SRC_DIR)/%.c, $(TARGET_DIR)/%.so, $(NIF_SOURCES))
+NIF_OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(SRC_DIR)/%.o,$(NIF_SOURCES))
+NIF_TARGET = $(TARGET_DIR)/secp256k1_nif.so
 
 # Utility headers (used as dependencies to trigger rebuilds)
-UTILS = $(SRC_DIR)/random.h $(SRC_DIR)/utils.h
+UTILS = $(SRC_DIR)/random.h $(SRC_DIR)/utils.h $(SRC_DIR)/nifs.h
 
 # Commit-specific stamp file to indicate secp256k1 source is fetched
 FETCH_STAMP = $(LIB_SRC_DIR)/.fetched-$(LIB_COMMIT)
 
 # --- Default Target ---
 .PHONY: all
-all: $(NIF_TARGETS)
+all: $(NIF_TARGET)
 
-# --- NIF Compilation Rule ---
-# $@ = target file ($(TARGET_DIR)/%.so)
+# --- NIF Compilation and Link Rules ---
+# $@ = target file ($(SRC_DIR)/%.o)
 # $< = first prerequisite ($(SRC_DIR)/%.c)
-$(TARGET_DIR)/%.so: $(SRC_DIR)/%.c $(UTILS) $(LIB_STATIC_LIB)
-	@mkdir -p $(@D)
+$(SRC_DIR)/%.o: $(SRC_DIR)/%.c $(UTILS) | $(FETCH_STAMP)
 	$(ECHO) "  CC       $@"
-	@$(CC) $(CPPFLAGS) $(CFLAGS) -shared -o $@ $< $(LIB_STATIC_LIB) $(LDFLAGS) $(LIBS)
+	@$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+
+$(NIF_TARGET): $(NIF_OBJECTS) $(LIB_STATIC_LIB)
+	@mkdir -p $(@D)
+	$(ECHO) "  LD       $@"
+	@$(CC) $(CFLAGS) -shared -o $@ $(NIF_OBJECTS) $(LIB_STATIC_LIB) $(LDFLAGS) $(LIBS)
+	@rm -f $(TARGET_DIR)/ecdsa.so $(TARGET_DIR)/schnorrsig.so $(TARGET_DIR)/ecdh.so $(TARGET_DIR)/extrakeys.so $(TARGET_DIR)/musig.so
 
 # --- secp256k1 Library Compilation Chain ---
 
@@ -128,6 +134,7 @@ $(FETCH_STAMP):
 clean:
 	$(ECHO) "  CLEAN    build artifacts"
 	@rm -f $(TARGET_DIR)/*.so
+	@rm -f $(SRC_DIR)/*.o
 	@if [ -f "$(LIB_SRC_DIR)/Makefile" ]; then \
 		$(MAKE) -C $(LIB_SRC_DIR) clean $(QUIET_MAKE) $(QUIET_CMD); \
 	fi

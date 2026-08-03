@@ -155,11 +155,11 @@ defmodule Secp256k1.MuSigTest do
       MuSig.nonce_agg([state.pubnonce <> <<0>>])
     end
 
-    assert_raise ArgumentError, fn ->
+    assert_raise FunctionClauseError, fn ->
       MuSig.nonce_process(state.aggnonce <> <<0>>, state.msg, state.cache)
     end
 
-    assert_raise ArgumentError, fn ->
+    assert_raise FunctionClauseError, fn ->
       MuSig.partial_sig_verify(
         state.partial_sig <> <<0>>,
         state.pubnonce,
@@ -169,7 +169,7 @@ defmodule Secp256k1.MuSigTest do
       )
     end
 
-    assert_raise ArgumentError, fn ->
+    assert_raise FunctionClauseError, fn ->
       MuSig.partial_sig_verify(
         state.partial_sig,
         state.pubnonce <> <<0>>,
@@ -194,7 +194,7 @@ defmodule Secp256k1.MuSigTest do
       MuSig.nonce_agg([short_pubnonce])
     end
 
-    assert_raise ArgumentError, fn ->
+    assert_raise FunctionClauseError, fn ->
       MuSig.nonce_process(short_aggnonce, state.msg, state.cache)
     end
 
@@ -207,44 +207,44 @@ defmodule Secp256k1.MuSigTest do
     state = signing_state()
     tweak = <<1::256>>
 
-    assert_raise ArgumentError, fn ->
-      MuSig.pubkey_get(<<0::197*8>>)
+    assert_raise FunctionClauseError, fn ->
+      apply(MuSig, :pubkey_get, [<<0::197*8>>])
     end
 
-    assert_raise ArgumentError, fn ->
-      MuSig.pubkey_ec_tweak_add(<<0::197*8>>, tweak)
+    assert_raise FunctionClauseError, fn ->
+      apply(MuSig, :pubkey_ec_tweak_add, [<<0::197*8>>, tweak])
     end
 
-    assert_raise ArgumentError, fn ->
-      MuSig.pubkey_xonly_tweak_add(<<0::197*8>>, tweak)
+    assert_raise FunctionClauseError, fn ->
+      apply(MuSig, :pubkey_xonly_tweak_add, [<<0::197*8>>, tweak])
     end
 
-    assert_raise ArgumentError, fn ->
-      MuSig.nonce_process(state.aggnonce, state.msg, <<0::197*8>>)
+    assert_raise FunctionClauseError, fn ->
+      apply(MuSig, :nonce_process, [state.aggnonce, state.msg, <<0::197*8>>])
     end
 
-    assert_raise ArgumentError, fn ->
-      MuSig.partial_sig_verify(
+    assert_raise FunctionClauseError, fn ->
+      apply(MuSig, :partial_sig_verify, [
         state.partial_sig,
         state.pubnonce,
         state.pubkey,
         <<0::197*8>>,
         state.session
-      )
+      ])
     end
 
-    assert_raise ArgumentError, fn ->
-      MuSig.partial_sig_verify(
+    assert_raise FunctionClauseError, fn ->
+      apply(MuSig, :partial_sig_verify, [
         state.partial_sig,
         state.pubnonce,
         state.pubkey,
         state.cache,
         <<0::133*8>>
-      )
+      ])
     end
 
-    assert_raise ArgumentError, fn ->
-      MuSig.partial_sig_agg(<<0::133*8>>, [state.partial_sig])
+    assert_raise FunctionClauseError, fn ->
+      apply(MuSig, :partial_sig_agg, [<<0::133*8>>, [state.partial_sig]])
     end
   end
 
@@ -253,8 +253,8 @@ defmodule Secp256k1.MuSigTest do
     {seckey, pubkey} = Secp256k1.keypair(:compressed)
     {:ok, _agg_xonly_pubkey, cache} = MuSig.pubkey_agg([pubkey])
 
-    assert_raise ArgumentError, fn ->
-      MuSig.nonce_gen(seckey, nil, msg, cache, nil)
+    assert_raise FunctionClauseError, fn ->
+      apply(MuSig, :nonce_gen, [seckey, nil, msg, cache, nil])
     end
 
     assert_raise ArgumentError, fn ->

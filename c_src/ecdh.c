@@ -1,12 +1,14 @@
 #include "utils.h"
+#include "nifs.h"
 
 #include <secp256k1_ecdh.h>
 
 // API
 
-static ERL_NIF_TERM
-ecdh(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+ERL_NIF_TERM
+secp256k1_nif_ecdh(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  secp256k1_context *ctx = nif_ctx(env);
   (void)argc;
 
   ERL_NIF_TERM result;
@@ -47,9 +49,3 @@ ecdh(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   secure_erase(shared_secret, sizeof(shared_secret));
   return result;
 }
-
-static ErlNifFunc nif_funcs[] = {
-    {"ecdh_nif", 2, ecdh},
-};
-
-ERL_NIF_INIT(Elixir.Secp256k1.ECDH, nif_funcs, &load, NULL, &upgrade, &unload)
