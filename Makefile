@@ -1,6 +1,7 @@
 # C library source
 LIB_URL := https://github.com/bitcoin-core/secp256k1
-COMMIT_HASH := v0.7.1
+LIB_VERSION := v0.7.1
+LIB_COMMIT := 1a53f4961f337b4d166c25fce72ef0dc88806618
 
 # --- Tools ---
 CC ?= gcc
@@ -72,8 +73,8 @@ NIF_TARGETS = $(patsubst $(SRC_DIR)/%.c, $(TARGET_DIR)/%.so, $(NIF_SOURCES))
 # Utility headers (used as dependencies to trigger rebuilds)
 UTILS = $(SRC_DIR)/random.h $(SRC_DIR)/utils.h
 
-# Stamp file to indicate secp256k1 source is fetched
-FETCH_STAMP = $(LIB_SRC_DIR)/.fetched
+# Commit-specific stamp file to indicate secp256k1 source is fetched
+FETCH_STAMP = $(LIB_SRC_DIR)/.fetched-$(LIB_COMMIT)
 
 # --- Default Target ---
 .PHONY: all
@@ -109,9 +110,15 @@ $(LIB_SRC_DIR)/autogen.sh: $(FETCH_STAMP)
 
 # Fetch the source code only if the stamp file doesn't exist
 $(FETCH_STAMP):
-	$(ECHO) "  GIT      libsecp256k1 (commit: $(COMMIT_HASH))"
+	$(ECHO) "  GIT      libsecp256k1 (version: $(LIB_VERSION), commit: $(LIB_COMMIT))"
 	@rm -rf $(LIB_SRC_DIR) # Remove potentially outdated dir before cloning
-	@git clone --depth 1 --branch $(COMMIT_HASH) $(LIB_URL) $(LIB_SRC_DIR) $(QUIET_CMD)
+	@git clone --depth 1 --branch $(LIB_VERSION) $(LIB_URL) $(LIB_SRC_DIR) $(QUIET_CMD)
+	@actual_commit=$$(git -C $(LIB_SRC_DIR) rev-parse HEAD); \
+		if [ "$$actual_commit" != "$(LIB_COMMIT)" ]; then \
+			echo "libsecp256k1 commit mismatch: expected $(LIB_COMMIT), got $$actual_commit" >&2; \
+			rm -rf $(LIB_SRC_DIR); \
+			exit 1; \
+		fi
 	@touch $@ # Create the stamp file
 
 # --- Cleaning Targets ---
