@@ -2,6 +2,7 @@
 
 ## unreleased
 
+- Run list-based MuSig2 key, nonce, and partial-signature aggregation on CPU-bound dirty schedulers
 - Make invalid-sized binary arguments to stable APIs fail at public Elixir boundaries with `FunctionClauseError`
 - Expose compressed and uncompressed ECDSA public-key conversion through `Secp256k1.convert_pubkey/2`
 - Allow `Secp256k1.ECDSA.sign/3` to accept `nil` for deterministic RFC 6979 signatures without additional nonce data

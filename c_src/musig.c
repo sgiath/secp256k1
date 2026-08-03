@@ -781,16 +781,16 @@ bad_arg:
 }
 
 static ErlNifFunc nif_funcs[] = {
-  {"pubkey_agg", 1, pubkey_agg},
+  {"pubkey_agg", 1, pubkey_agg, ERL_NIF_DIRTY_JOB_CPU_BOUND},
   {"pubkey_get", 1, pubkey_get},
   {"pubkey_ec_tweak_add", 2, pubkey_ec_tweak_add},
   {"pubkey_xonly_tweak_add", 2, pubkey_xonly_tweak_add},
   {"nonce_gen", 5, nonce_gen},
-  {"nonce_agg", 1, nonce_agg},
+  {"nonce_agg", 1, nonce_agg, ERL_NIF_DIRTY_JOB_CPU_BOUND},
   {"nonce_process", 3, nonce_process},
   {"partial_sign", 4, partial_sign},
   {"partial_sig_verify", 5, partial_sig_verify},
-  {"partial_sig_agg", 2, partial_sig_agg}
+  {"partial_sig_agg", 2, partial_sig_agg, ERL_NIF_DIRTY_JOB_CPU_BOUND}
 };
 
 ERL_NIF_INIT(Elixir.Secp256k1.MuSig, nif_funcs, &musig_load, NULL, &musig_upgrade, &unload)
