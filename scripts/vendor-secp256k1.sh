@@ -156,7 +156,7 @@ log "Running upstream make distcheck (this can take several minutes)"
 )
 
 shopt -s nullglob
-dist_archives=("$TMP/src"/secp256k1-*.tar.gz)
+dist_archives=("$TMP/src"/libsecp256k1-*.tar.gz)
 if (( ${#dist_archives[@]} != 1 )); then
   die "expected exactly one dist archive, found ${#dist_archives[@]}"
 fi
