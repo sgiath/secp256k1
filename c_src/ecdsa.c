@@ -1,10 +1,12 @@
 #include "utils.h"
+#include "nifs.h"
 
 // API
 
-static ERL_NIF_TERM
-compressed_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+ERL_NIF_TERM
+secp256k1_nif_ecdsa_compressed_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  secp256k1_context *ctx = nif_ctx(env);
   (void)argc;
 
   ERL_NIF_TERM result;
@@ -45,9 +47,10 @@ compressed_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   return result;
 }
 
-static ERL_NIF_TERM
-uncompressed_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+ERL_NIF_TERM
+secp256k1_nif_ecdsa_uncompressed_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  secp256k1_context *ctx = nif_ctx(env);
   (void)argc;
 
   ERL_NIF_TERM result;
@@ -88,9 +91,10 @@ uncompressed_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   return result;
 }
 
-static ERL_NIF_TERM
-compress_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+ERL_NIF_TERM
+secp256k1_nif_ecdsa_compress_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  secp256k1_context *ctx = nif_ctx(env);
   (void)argc;
 
   ERL_NIF_TERM result;
@@ -131,9 +135,10 @@ compress_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   return result;
 }
 
-static ERL_NIF_TERM
-decompress_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+ERL_NIF_TERM
+secp256k1_nif_ecdsa_decompress_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  secp256k1_context *ctx = nif_ctx(env);
   (void)argc;
 
   ERL_NIF_TERM result;
@@ -174,9 +179,10 @@ decompress_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   return result;
 }
 
-static ERL_NIF_TERM
-sign(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+ERL_NIF_TERM
+secp256k1_nif_ecdsa_sign(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  secp256k1_context *ctx = nif_ctx(env);
   (void)argc;
 
   ERL_NIF_TERM result;
@@ -240,9 +246,10 @@ sign(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   return result;
 }
 
-static ERL_NIF_TERM
-serialize_der(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+ERL_NIF_TERM
+secp256k1_nif_ecdsa_serialize_der(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  secp256k1_context *ctx = nif_ctx(env);
   (void)argc;
 
   ERL_NIF_TERM result;
@@ -276,9 +283,10 @@ serialize_der(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   return result;
 }
 
-static ERL_NIF_TERM
-parse_der(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+ERL_NIF_TERM
+secp256k1_nif_ecdsa_parse_der(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  secp256k1_context *ctx = nif_ctx(env);
   (void)argc;
 
   ERL_NIF_TERM result;
@@ -311,9 +319,10 @@ parse_der(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   return result;
 }
 
-static ERL_NIF_TERM
-normalize(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+ERL_NIF_TERM
+secp256k1_nif_ecdsa_normalize(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  secp256k1_context *ctx = nif_ctx(env);
   (void)argc;
 
   ERL_NIF_TERM result;
@@ -349,9 +358,10 @@ normalize(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   return result;
 }
 
-static ERL_NIF_TERM
-verify(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+ERL_NIF_TERM
+secp256k1_nif_ecdsa_valid(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  secp256k1_context *ctx = nif_ctx(env);
   (void)argc;
 
   ErlNifBinary serialized_sig, msg_hash, serialized_pubkey;
@@ -391,17 +401,3 @@ verify(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 
   return enif_make_atom(env, "false");
 }
-
-static ErlNifFunc nif_funcs[] = {
-    {"compressed_pubkey_nif", 1, compressed_pubkey},
-    {"uncompressed_pubkey_nif", 1, uncompressed_pubkey},
-    {"compress_pubkey_nif", 1, compress_pubkey},
-    {"decompress_pubkey_nif", 1, decompress_pubkey},
-    {"sign_nif", 3, sign},
-    {"serialize_der_nif", 1, serialize_der},
-    {"parse_der_nif", 1, parse_der},
-    {"normalize_nif", 1, normalize},
-    {"valid_nif?", 3, verify},
-};
-
-ERL_NIF_INIT(Elixir.Secp256k1.ECDSA, nif_funcs, &load, NULL, &upgrade, &unload)

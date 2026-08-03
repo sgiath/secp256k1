@@ -1,4 +1,5 @@
 #include "utils.h"
+#include "nifs.h"
 
 #include <secp256k1.h>
 #include <secp256k1_extrakeys.h>
@@ -6,9 +7,10 @@
 
 // API
 
-static ERL_NIF_TERM
-sign32(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+ERL_NIF_TERM
+secp256k1_nif_schnorr_sign32(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  secp256k1_context *ctx = nif_ctx(env);
   (void)argc;
 
   ERL_NIF_TERM result;
@@ -65,9 +67,10 @@ cleanup:
   return result;
 }
 
-static ERL_NIF_TERM
-sign_custom(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+ERL_NIF_TERM
+secp256k1_nif_schnorr_sign_custom(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  secp256k1_context *ctx = nif_ctx(env);
   (void)argc;
 
   ERL_NIF_TERM result;
@@ -123,9 +126,10 @@ cleanup:
   return result;
 }
 
-static ERL_NIF_TERM
-verify(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+ERL_NIF_TERM
+secp256k1_nif_schnorr_valid(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  secp256k1_context *ctx = nif_ctx(env);
   (void)argc;
 
   ErlNifBinary signature, message, pubkey;
@@ -158,11 +162,3 @@ verify(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 
   return enif_make_atom(env, "false");
 }
-
-static ErlNifFunc nif_funcs[] = {
-    {"sign32_nif", 3, sign32},
-    {"sign_custom_nif", 3, sign_custom},
-    {"valid_nif?", 3, verify},
-};
-
-ERL_NIF_INIT(Elixir.Secp256k1.Schnorr, nif_funcs, &load, NULL, &upgrade, &unload)

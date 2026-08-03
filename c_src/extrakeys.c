@@ -1,13 +1,15 @@
 #include "utils.h"
+#include "nifs.h"
 
 #include <secp256k1.h>
 #include <secp256k1_extrakeys.h>
 
 // API
 
-static ERL_NIF_TERM
-valid_seckey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+ERL_NIF_TERM
+secp256k1_nif_valid_seckey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  secp256k1_context *ctx = nif_ctx(env);
   (void)argc;
 
   ErlNifBinary seckey;
@@ -20,9 +22,10 @@ valid_seckey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   return enif_make_atom(env, secp256k1_ec_seckey_verify(ctx, seckey.data) ? "true" : "false");
 }
 
-static ERL_NIF_TERM
-valid_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+ERL_NIF_TERM
+secp256k1_nif_valid_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  secp256k1_context *ctx = nif_ctx(env);
   (void)argc;
 
   ErlNifBinary input;
@@ -68,9 +71,10 @@ make_binary(ErlNifEnv *env, const unsigned char *data, size_t size, ERL_NIF_TERM
   return 1;
 }
 
-static ERL_NIF_TERM
-xonly_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+ERL_NIF_TERM
+secp256k1_nif_xonly_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  secp256k1_context *ctx = nif_ctx(env);
   (void)argc;
 
   ERL_NIF_TERM result;
@@ -120,10 +124,10 @@ cleanup:
   secure_erase(&keypair, sizeof(keypair));
   return result;
 }
-
-static ERL_NIF_TERM
-xonly_pubkey_from_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+ERL_NIF_TERM
+secp256k1_nif_xonly_pubkey_from_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  secp256k1_context *ctx = nif_ctx(env);
   (void)argc;
 
   ERL_NIF_TERM result;
@@ -160,9 +164,10 @@ xonly_pubkey_from_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   return result;
 }
 
-static ERL_NIF_TERM
-ec_seckey_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+ERL_NIF_TERM
+secp256k1_nif_ec_seckey_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  secp256k1_context *ctx = nif_ctx(env);
   (void)argc;
 
   ERL_NIF_TERM result;
@@ -195,9 +200,10 @@ ec_seckey_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   return result;
 }
 
-static ERL_NIF_TERM
-ec_pubkey_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+ERL_NIF_TERM
+secp256k1_nif_ec_pubkey_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  secp256k1_context *ctx = nif_ctx(env);
   (void)argc;
 
   ERL_NIF_TERM result;
@@ -246,9 +252,10 @@ ec_pubkey_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   return result;
 }
 
-static ERL_NIF_TERM
-xonly_seckey_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+ERL_NIF_TERM
+secp256k1_nif_xonly_seckey_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  secp256k1_context *ctx = nif_ctx(env);
   (void)argc;
 
   ERL_NIF_TERM result;
@@ -296,9 +303,10 @@ cleanup_keypair:
   return result;
 }
 
-static ERL_NIF_TERM
-xonly_pubkey_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+ERL_NIF_TERM
+secp256k1_nif_xonly_pubkey_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  secp256k1_context *ctx = nif_ctx(env);
   (void)argc;
 
   ERL_NIF_TERM pubkey_term;
@@ -349,9 +357,10 @@ xonly_pubkey_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   );
 }
 
-static ERL_NIF_TERM
-xonly_pubkey_tweak_add_check(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+ERL_NIF_TERM
+secp256k1_nif_xonly_pubkey_tweak_add_check(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+  secp256k1_context *ctx = nif_ctx(env);
   (void)argc;
 
   ErlNifBinary tweaked_pubkey, internal_pubkey, tweak;
@@ -384,17 +393,3 @@ xonly_pubkey_tweak_add_check(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]
 
   return enif_make_atom(env, "false");
 }
-
-static ErlNifFunc nif_funcs[] = {
-    {"valid_seckey_nif?", 1, valid_seckey},
-    {"valid_pubkey_nif?", 1, valid_pubkey},
-    {"xonly_pubkey_nif", 1, xonly_pubkey},
-    {"xonly_pubkey_from_pubkey_nif", 1, xonly_pubkey_from_pubkey},
-    {"ec_seckey_tweak_add_nif", 2, ec_seckey_tweak_add},
-    {"ec_pubkey_tweak_add_nif", 2, ec_pubkey_tweak_add},
-    {"xonly_seckey_tweak_add_nif", 2, xonly_seckey_tweak_add},
-    {"xonly_pubkey_tweak_add_nif", 2, xonly_pubkey_tweak_add},
-    {"xonly_pubkey_tweak_add_check_nif", 4, xonly_pubkey_tweak_add_check},
-};
-
-ERL_NIF_INIT(Elixir.Secp256k1.Extrakeys, nif_funcs, &load, NULL, &upgrade, &unload)

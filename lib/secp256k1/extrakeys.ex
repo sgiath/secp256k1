@@ -9,13 +9,13 @@ defmodule Secp256k1.Extrakeys do
   Checks whether a 32-byte binary is a valid secp256k1 secret-key scalar.
   """
   @spec valid_seckey?(Secp256k1.seckey()) :: boolean()
-  def valid_seckey?(seckey) when is_seckey(seckey), do: valid_seckey_nif?(seckey)
+  def valid_seckey?(seckey) when is_seckey(seckey), do: Secp256k1.NIF.valid_seckey?(seckey)
 
   @doc """
   Checks whether an x-only, compressed, or uncompressed public key can be parsed.
   """
   @spec valid_pubkey?(Secp256k1.pubkey()) :: boolean()
-  def valid_pubkey?(pubkey) when is_pubkey(pubkey), do: valid_pubkey_nif?(pubkey)
+  def valid_pubkey?(pubkey) when is_pubkey(pubkey), do: Secp256k1.NIF.valid_pubkey?(pubkey)
 
   @doc """
   Derives or converts an x-only public key.
@@ -34,10 +34,10 @@ defmodule Secp256k1.Extrakeys do
   """
   @spec xonly_pubkey(Secp256k1.seckey() | Secp256k1.compressed_pubkey()) ::
           Secp256k1.xonly_pubkey() | {:error, binary() | :allocation_failed}
-  def xonly_pubkey(seckey) when is_seckey(seckey), do: xonly_pubkey_nif(seckey)
+  def xonly_pubkey(seckey) when is_seckey(seckey), do: Secp256k1.NIF.xonly_pubkey(seckey)
 
   def xonly_pubkey(pubkey) when is_compressed_pubkey(pubkey),
-    do: xonly_pubkey_from_pubkey_nif(pubkey)
+    do: Secp256k1.NIF.xonly_pubkey_from_pubkey(pubkey)
 
   @doc """
   Adds a scalar tweak to a secret key.
@@ -49,7 +49,7 @@ defmodule Secp256k1.Extrakeys do
   @spec ec_seckey_tweak_add(Secp256k1.seckey(), Secp256k1.tweak()) ::
           Secp256k1.seckey() | {:error, binary() | :allocation_failed}
   def ec_seckey_tweak_add(seckey, tweak) when is_seckey(seckey) and is_tweak(tweak),
-    do: ec_seckey_tweak_add_nif(seckey, tweak)
+    do: Secp256k1.NIF.ec_seckey_tweak_add(seckey, tweak)
 
   @doc """
   Adds a scalar multiple of the generator to a full public key.
@@ -68,7 +68,7 @@ defmodule Secp256k1.Extrakeys do
   def ec_pubkey_tweak_add(pubkey, tweak)
       when (is_compressed_pubkey(pubkey) or is_uncompressed_pubkey(pubkey)) and
              is_tweak(tweak),
-      do: ec_pubkey_tweak_add_nif(pubkey, tweak)
+      do: Secp256k1.NIF.ec_pubkey_tweak_add(pubkey, tweak)
 
   @doc """
   Tweaks a secret key using x-only public-key semantics.
@@ -80,7 +80,7 @@ defmodule Secp256k1.Extrakeys do
           Secp256k1.seckey() | {:error, binary() | :allocation_failed}
   def xonly_seckey_tweak_add(seckey, tweak)
       when is_seckey(seckey) and is_tweak(tweak),
-      do: xonly_seckey_tweak_add_nif(seckey, tweak)
+      do: Secp256k1.NIF.xonly_seckey_tweak_add(seckey, tweak)
 
   @doc """
   Adds a scalar tweak to an x-only public key.
@@ -94,7 +94,7 @@ defmodule Secp256k1.Extrakeys do
           | {:error, binary() | :allocation_failed}
   def xonly_pubkey_tweak_add(internal_pubkey, tweak)
       when is_xonly_pubkey(internal_pubkey) and is_tweak(tweak),
-      do: xonly_pubkey_tweak_add_nif(internal_pubkey, tweak)
+      do: Secp256k1.NIF.xonly_pubkey_tweak_add(internal_pubkey, tweak)
 
   @doc """
   Checks an x-only public-key tweak result, including its parity.
@@ -111,44 +111,11 @@ defmodule Secp256k1.Extrakeys do
   def xonly_pubkey_tweak_add_check(tweaked_pubkey, parity, internal_pubkey, tweak)
       when is_xonly_pubkey(tweaked_pubkey) and parity in [0, 1] and
              is_xonly_pubkey(internal_pubkey) and is_tweak(tweak),
-      do: xonly_pubkey_tweak_add_check_nif(tweaked_pubkey, parity, internal_pubkey, tweak)
-
-  @doc false
-  def valid_seckey_nif?(_seckey), do: :erlang.nif_error({:error, :not_loaded})
-
-  @doc false
-  def valid_pubkey_nif?(_pubkey), do: :erlang.nif_error({:error, :not_loaded})
-
-  @doc false
-  def xonly_pubkey_nif(_seckey), do: :erlang.nif_error({:error, :not_loaded})
-
-  @doc false
-  def xonly_pubkey_from_pubkey_nif(_pubkey), do: :erlang.nif_error({:error, :not_loaded})
-
-  @doc false
-  def ec_seckey_tweak_add_nif(_seckey, _tweak), do: :erlang.nif_error({:error, :not_loaded})
-
-  @doc false
-  def ec_pubkey_tweak_add_nif(_pubkey, _tweak), do: :erlang.nif_error({:error, :not_loaded})
-
-  @doc false
-  def xonly_seckey_tweak_add_nif(_seckey, _tweak), do: :erlang.nif_error({:error, :not_loaded})
-
-  @doc false
-  def xonly_pubkey_tweak_add_nif(_pubkey, _tweak), do: :erlang.nif_error({:error, :not_loaded})
-
-  @doc false
-  def xonly_pubkey_tweak_add_check_nif(_tweaked_pubkey, _parity, _internal_pubkey, _tweak),
-    do: :erlang.nif_error({:error, :not_loaded})
-
-  # internal NIF related
-
-  @on_load :load_nifs
-
-  defp load_nifs do
-    :lib_secp256k1
-    |> Application.app_dir("priv/extrakeys")
-    |> String.to_charlist()
-    |> :erlang.load_nif(0)
-  end
+      do:
+        Secp256k1.NIF.xonly_pubkey_tweak_add_check(
+          tweaked_pubkey,
+          parity,
+          internal_pubkey,
+          tweak
+        )
 end

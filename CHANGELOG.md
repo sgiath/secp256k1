@@ -6,6 +6,11 @@
 - Add `Secp256k1.valid_seckey?/1` and `Secp256k1.valid_pubkey?/1` for validating externally received keys
 - Convert received compressed public keys to x-only form through `Secp256k1.convert_pubkey/2` without requiring the secret key
 - Expose full-key scalar tweaks for BIP-32 derivation and x-only key tweaks, parity checks, and signing keys for Taproot
+- Consolidate five feature NIF shared objects into one `priv/secp256k1_nif.so`, reducing the native footprint by approximately 80% by embedding libsecp256k1 and its precomputed tables once instead of five times
+- Move the secp256k1 context and MuSig resource types from C statics into per-instance `priv_data`, fixing hot-upgrade context leaks and use-after-free risks
+- Add Elixir shape guards to MuSig2 public functions: malformed shapes raise `FunctionClauseError`, while valid-shape invalid content and forged resources raise `ArgumentError` from the NIF
+- Remove internal `@doc false` `*_nif` stubs from feature modules without compatibility aliases
+- Treat resources created by legacy per-feature NIF libraries as invalid when crossing into the consolidated library. Same-library hot upgrades preserve compatible resources through `ERL_NIF_RT_TAKEOVER`; cross-library resources are not migrated
 - Run list-based MuSig2 key, nonce, and partial-signature aggregation on CPU-bound dirty schedulers
 - Make invalid-sized binary arguments to stable APIs fail at public Elixir boundaries with `FunctionClauseError`
 - Expose compressed and uncompressed ECDSA public-key conversion through `Secp256k1.convert_pubkey/2`
