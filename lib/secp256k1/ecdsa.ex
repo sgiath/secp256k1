@@ -96,7 +96,49 @@ defmodule Secp256k1.ECDSA do
   end
 
   @doc """
-  Check if ECDSA signature is valid
+  Serializes a compact 64-byte ECDSA signature as strict DER.
+
+  The returned binary contains only the DER signature. Bitcoin transaction
+  sighash bytes are not part of this encoding and must be handled separately.
+  """
+  @spec serialize_der(signature :: Secp256k1.ecdsa_sig()) ::
+          Secp256k1.ecdsa_der_sig() | {:error, binary() | :allocation_failed}
+  def serialize_der(signature) when is_ecdsa_sig(signature), do: serialize_der_nif(signature)
+
+  @doc """
+  Parses a standard-sized strict DER ECDSA signature into compact 64-byte `r || s` form.
+
+  Accepts DER signatures from 8 through 72 bytes. Wrong-sized input raises
+  `FunctionClauseError`; malformed DER within that range raises `ArgumentError`.
+  As in upstream libsecp256k1, syntactically valid DER containing out-of-range
+  values parses to a compact signature that cannot verify. A trailing Bitcoin
+  transaction sighash byte must be removed before calling this function.
+  """
+  @spec parse_der(signature :: Secp256k1.ecdsa_der_sig()) ::
+          Secp256k1.ecdsa_sig() | {:error, binary() | :allocation_failed}
+  def parse_der(signature)
+      when is_binary(signature) and byte_size(signature) >= 8 and byte_size(signature) <= 72 do
+    parse_der_nif(signature)
+  end
+
+  @doc """
+  Converts a compact ECDSA signature to its low-S form.
+
+  This operation is idempotent. libsecp256k1 verification rejects high-S
+  signatures. Normalize only when the protocol deliberately accepts the
+  mathematically equivalent high-S form: doing so accepts a malleable signature,
+  and all subsequent identity or hashing operations must use the normalized bytes.
+  Protocols requiring canonical low-S signatures should reject instead.
+  """
+  @spec normalize(signature :: Secp256k1.ecdsa_sig()) ::
+          Secp256k1.ecdsa_sig() | {:error, binary() | :allocation_failed}
+  def normalize(signature) when is_ecdsa_sig(signature), do: normalize_nif(signature)
+
+  @doc """
+  Check if ECDSA signature is valid.
+
+  High-S signatures return `false`. Call `normalize/1` first only when the
+  surrounding protocol deliberately accepts malleable signature encodings.
 
   ## Examples
 
@@ -132,6 +174,15 @@ defmodule Secp256k1.ECDSA do
 
   @doc false
   def sign_nif(_msg_hash, _seckey, _nonce_data), do: :erlang.nif_error({:error, :not_loaded})
+
+  @doc false
+  def serialize_der_nif(_signature), do: :erlang.nif_error({:error, :not_loaded})
+
+  @doc false
+  def parse_der_nif(_signature), do: :erlang.nif_error({:error, :not_loaded})
+
+  @doc false
+  def normalize_nif(_signature), do: :erlang.nif_error({:error, :not_loaded})
 
   @doc false
   def valid_nif?(_signature, _msg_hash, _pubkey), do: :erlang.nif_error({:error, :not_loaded})

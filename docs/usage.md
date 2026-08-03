@@ -154,19 +154,43 @@ is_valid = Secp256k1.ecdsa_valid?(signature, msg_hash, pubkey)
 # => true
 ```
 
+### DER Wire Signatures and Low-S Normalization
+
+The signing and verification APIs use compact 64-byte `r || s` signatures. Convert
+strict DER signatures at protocol boundaries:
+
+```elixir
+der_signature = Secp256k1.ecdsa_signature_serialize_der(signature)
+compact_signature = Secp256k1.ecdsa_signature_parse_der(der_signature)
+```
+
+Bitcoin transaction signatures append a sighash byte after the DER signature. Remove
+that byte before parsing and append the required value after serialization.
+
+libsecp256k1 verification rejects high-S signatures. Protocols requiring canonical low-S
+must keep that rejection. Normalize only when the surrounding protocol deliberately
+accepts the mathematically equivalent high-S form:
+
+```elixir
+compact_signature = Secp256k1.ecdsa_signature_normalize(compact_signature)
+is_valid = Secp256k1.ecdsa_valid?(compact_signature, msg_hash, pubkey)
+```
+
+Normalization accepts a malleable alternate signature. Use the normalized bytes for
+all subsequent identity, hashing, storage, and transmission operations.
+
 > #### ECDSA and `:crypto` {: .info}
 >
 > Erlang's `:crypto` module also provides generic ECDSA through
-> `:crypto.sign/4` and `:crypto.verify/5`. Use that API when you want the
-> standard Erlang/OpenSSL interface with digest selection and DER-encoded
-> signatures.
+> `:crypto.sign/4` and `:crypto.verify/5`. Use that API when you want digest
+> selection through the standard Erlang/OpenSSL interface.
 >
 > Use `Secp256k1.ecdsa_sign/2` and `Secp256k1.ecdsa_valid?/3` when you want the
 > libsecp256k1/Bitcoin-oriented contract:
 >
 > - sign an already prepared 32-byte message hash
 > - verify with compressed or uncompressed secp256k1 public keys
-> - exchange compact 64-byte `r || s` signatures
+> - exchange compact `r || s` signatures internally and strict DER at wire boundaries
 
 ## Schnorr Signatures
 

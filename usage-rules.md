@@ -4,16 +4,17 @@ Quick reference for `lib_secp256k1` library users. For detailed examples, see [U
 
 ## Data Sizes
 
-| Type                  | Size     | Description                       |
-| --------------------- | -------- | --------------------------------- |
-| `seckey`              | 32 bytes | Secret key (private key)          |
-| `tweak`               | 32 bytes | Big-endian scalar for key tweaks  |
-| `hash`                | 32 bytes | Message hash (SHA256)             |
-| `compressed_pubkey`   | 33 bytes | Standard Bitcoin pubkey format    |
-| `uncompressed_pubkey` | 65 bytes | Full pubkey with both coordinates |
-| `xonly_pubkey`        | 32 bytes | Schnorr/Taproot/Nostr format      |
-| `ecdsa_sig`           | 64 bytes | Compact ECDSA signature           |
-| `schnorr_sig`         | 64 bytes | BIP-340 Schnorr signature         |
+| Type                  | Size       | Description                       |
+| --------------------- | ---------- | --------------------------------- |
+| `seckey`              | 32 bytes   | Secret key (private key)          |
+| `tweak`               | 32 bytes   | Big-endian scalar for key tweaks  |
+| `hash`                | 32 bytes   | Message hash (SHA256)             |
+| `compressed_pubkey`   | 33 bytes   | Standard Bitcoin pubkey format    |
+| `uncompressed_pubkey` | 65 bytes   | Full pubkey with both coordinates |
+| `xonly_pubkey`        | 32 bytes   | Schnorr/Taproot/Nostr format      |
+| `ecdsa_sig`           | 64 bytes   | Compact ECDSA signature           |
+| `ecdsa_der_sig`       | 8-72 bytes | Strict DER ECDSA signature        |
+| `schnorr_sig`         | 64 bytes   | BIP-340 Schnorr signature         |
 
 ## Quick Reference
 
@@ -56,6 +57,11 @@ output_seckey = Secp256k1.xonly_seckey_tweak_add(seckey, tweak)
 ```elixir
 msg_hash = :crypto.hash(:sha256, "message")  # MUST be 32 bytes
 signature = Secp256k1.ecdsa_sign(msg_hash, seckey)
+der_signature = Secp256k1.ecdsa_signature_serialize_der(signature)
+signature = Secp256k1.ecdsa_signature_parse_der(der_signature)
+
+# Only when the protocol deliberately accepts malleable high-S forms:
+signature = Secp256k1.ecdsa_signature_normalize(signature)
 true = Secp256k1.ecdsa_valid?(signature, msg_hash, pubkey)  # compressed or uncompressed pubkey
 ```
 
@@ -73,6 +79,8 @@ true = Secp256k1.schnorr_valid?(signature, msg_hash, xonly_pubkey)  # x-only pub
 
 - **Hash messages before signing**: Always pass a 32-byte hash to signing functions, not raw messages.
 - **Use secp256k1 pubkeys for ECDSA**: `ecdsa_valid?/3` accepts 33-byte compressed or 65-byte uncompressed pubkeys.
+- **Reject high-S by default**: Normalize only when the protocol deliberately accepts malleable signature forms, then use the normalized bytes thereafter.
+- **Separate Bitcoin sighash bytes**: DER conversion handles only the signature, not a trailing transaction sighash byte.
 - **Use x-only pubkeys for Schnorr**: `schnorr_valid?/3` expects 32-byte x-only pubkeys.
 - **Generate fresh keypairs securely**: `Secp256k1.keypair/1` uses `:crypto.strong_rand_bytes/1`.
 - **Validate inputs early**: Use `valid_seckey?/1` and `valid_pubkey?/1` for externally received keys.
@@ -117,6 +125,7 @@ end
 | Reusing MuSig nonces    | Leaks secret key                       | Always call `nonce_gen/5` fresh                            |
 | Invalid binary size     | Operations raise `FunctionClauseError` | Use documented sizes; key predicates return `false`        |
 | Invalid key encoding    | Correct size does not imply validity   | Use `valid_seckey?/1` or `valid_pubkey?/1` before use      |
+| Passing DER to verify   | Verification expects compact signature | Parse DER; normalize only if the protocol permits high-S   |
 | Forgetting to aggregate | MuSig requires full protocol           | Follow all 6 steps in MuSig guide                          |
 
 ## MuSig2 Protocol (Summary)

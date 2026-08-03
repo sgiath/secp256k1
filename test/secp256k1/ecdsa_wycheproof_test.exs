@@ -2,19 +2,10 @@ defmodule Secp256k1Test.ECDSAWycheproof do
   use Secp256k1Test.Case, async: true
 
   alias Secp256k1.ECDSA
-  alias Secp256k1Test.DER
   alias Secp256k1Test.Vectors
-
-  @skip_flags ["BerEncodedSignature", "InvalidEncoding", "InvalidTypesInSignature"]
 
   setup_all do
     {:ok, tests: Vectors.load_wycheproof_ecdsa()}
-  end
-
-  test "Wycheproof filtering excludes DER-encoding flags", %{tests: tests} do
-    assert Enum.all?(tests, fn test ->
-             Enum.all?(test.flags, &(&1 not in @skip_flags))
-           end)
   end
 
   test "Wycheproof ECDSA vectors", %{tests: tests} do
@@ -46,7 +37,7 @@ defmodule Secp256k1Test.ECDSAWycheproof do
     msg_hash = :crypto.hash(:sha256, test_case.msg)
 
     try do
-      signature = DER.to_compact(test_case.sig)
+      signature = ECDSA.parse_der(test_case.sig)
 
       try do
         case ECDSA.valid?(signature, msg_hash, pubkey) do
@@ -58,7 +49,7 @@ defmodule Secp256k1Test.ECDSAWycheproof do
         ArgumentError -> :invalid
       end
     rescue
-      ArgumentError -> :invalid_der
+      _error in [ArgumentError, FunctionClauseError] -> :invalid_der
     end
   end
 end

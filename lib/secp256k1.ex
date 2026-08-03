@@ -106,6 +106,12 @@ defmodule Secp256k1 do
   @type ecdsa_sig() :: <<_::512>>
 
   @typedoc """
+  Standard-sized strict DER-encoded ECDSA signature (8-72 bytes), excluding any
+  Bitcoin transaction sighash byte
+  """
+  @type ecdsa_der_sig() :: binary()
+
+  @typedoc """
   Schnorr signature is 64 bytes long binary
   """
   @type schnorr_sig() :: <<_::512>>
@@ -335,7 +341,49 @@ defmodule Secp256k1 do
   end
 
   @doc """
-  Validate ECDSA signature
+  Serializes a compact 64-byte ECDSA signature as strict DER.
+
+  The result does not include a Bitcoin transaction sighash byte.
+  """
+  @spec ecdsa_signature_serialize_der(ecdsa_sig()) ::
+          ecdsa_der_sig() | {:error, binary() | :allocation_failed}
+  def ecdsa_signature_serialize_der(signature) when is_ecdsa_sig(signature) do
+    Secp256k1.ECDSA.serialize_der(signature)
+  end
+
+  @doc """
+  Parses an 8-72-byte strict DER ECDSA signature into compact 64-byte `r || s` form.
+
+  Remove any trailing Bitcoin transaction sighash byte before parsing. Wrong-sized
+  input raises `FunctionClauseError`; malformed DER in the accepted size range
+  raises `ArgumentError`.
+  """
+  @spec ecdsa_signature_parse_der(ecdsa_der_sig()) ::
+          ecdsa_sig() | {:error, binary() | :allocation_failed}
+  def ecdsa_signature_parse_der(signature)
+      when is_binary(signature) and byte_size(signature) >= 8 and byte_size(signature) <= 72 do
+    Secp256k1.ECDSA.parse_der(signature)
+  end
+
+  @doc """
+  Converts a compact ECDSA signature to the low-S form required by libsecp256k1 verification.
+
+  Already-normalized signatures are returned unchanged. Normalization accepts a
+  malleable alternate encoding; use it only when the protocol deliberately accepts
+  mathematical equivalence, and use the normalized bytes thereafter. Protocols
+  requiring canonical low-S signatures should reject high-S instead.
+  """
+  @spec ecdsa_signature_normalize(ecdsa_sig()) ::
+          ecdsa_sig() | {:error, binary() | :allocation_failed}
+  def ecdsa_signature_normalize(signature) when is_ecdsa_sig(signature) do
+    Secp256k1.ECDSA.normalize(signature)
+  end
+
+  @doc """
+  Validate ECDSA signature.
+
+  High-S signatures return `false`. Normalize only if the surrounding protocol
+  deliberately accepts malleable signature encodings.
 
   Inputs
     - `signature` 64 byte long binary

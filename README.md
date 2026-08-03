@@ -17,7 +17,7 @@ Elixir NIF bindings for the [bitcoin-core/secp256k1](https://github.com/bitcoin-
 - **Keypair generation** - secure random secret keys with compressed, uncompressed, or x-only public keys
 - **Key validation** - validate externally received secret and public keys before use
 - **Key tweaks** - BIP-32-style full-key derivation and x-only Taproot commitments
-- **ECDSA signatures** - sign and verify using the traditional Bitcoin signature scheme
+- **ECDSA signatures** - sign, verify, normalize low-S, and convert compact signatures to and from DER
 - **Schnorr signatures** - BIP-340 compatible, used in Taproot and Nostr
 - **MuSig2** - BIP-327 multi-party Schnorr signatures (experimental)
 - **ECDH** - Diffie-Hellman shared secret computation
@@ -106,20 +106,31 @@ functions return `{:error, reason}` when libsecp256k1 rejects one.
 msg_hash = :crypto.hash(:sha256, "Hello Bitcoin!")
 signature = Secp256k1.ecdsa_sign(msg_hash, seckey)
 
+# Convert the compact signature to strict DER for wire protocols
+der_signature = Secp256k1.ecdsa_signature_serialize_der(signature)
+
+# Parse a signature received from the wire
+compact_signature = Secp256k1.ecdsa_signature_parse_der(der_signature)
+
+# Only normalize if the protocol intentionally accepts malleable high-S forms
+compact_signature = Secp256k1.ecdsa_signature_normalize(compact_signature)
+
 # Verify
-Secp256k1.ecdsa_valid?(signature, msg_hash, pubkey)
+Secp256k1.ecdsa_valid?(compact_signature, msg_hash, pubkey)
 #=> true
 ```
 
 > #### ECDSA and `:crypto` {: .info}
 >
-> Erlang's `:crypto` module also provides generic ECDSA through
-> `:crypto.sign/4` and `:crypto.verify/5`. Use that API when you want the
-> standard Erlang/OpenSSL interface with digest selection and DER-encoded
-> signatures. Use `Secp256k1.ecdsa_sign/2` and `Secp256k1.ecdsa_valid?/3` when
-> you want the libsecp256k1/Bitcoin-oriented contract: sign an already prepared
-> 32-byte message hash, use compressed or uncompressed secp256k1 public keys, and exchange
-> compact 64-byte `r || s` signatures.
+> Erlang's `:crypto` module also provides generic ECDSA with digest selection.
+> This library uses the libsecp256k1/Bitcoin-oriented contract: sign an already
+> prepared 32-byte message hash and verify with secp256k1 public keys. Sign and
+> verify use compact 64-byte `r || s` signatures; the signature conversion APIs
+> bridge strict DER wire encodings. DER does not include the trailing sighash
+> byte used in Bitcoin transactions. Verification rejects high-S. Protocols
+> requiring canonical low-S signatures should keep that rejection. Normalize
+> only when deliberately accepting malleable, mathematically equivalent forms,
+> and use the normalized bytes thereafter.
 
 ### Schnorr Signatures (BIP-340)
 

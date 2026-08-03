@@ -2,12 +2,6 @@ defmodule Secp256k1Test.Vectors do
   @moduledoc false
 
   @vectors_dir Path.expand("../vectors", __DIR__)
-  @wycheproof_skip_flags MapSet.new([
-                           "BerEncodedSignature",
-                           "InvalidEncoding",
-                           "InvalidTypesInSignature"
-                         ])
-
   def load_bip340 do
     @vectors_dir
     |> Path.join("bip340.csv")
@@ -61,23 +55,17 @@ defmodule Secp256k1Test.Vectors do
 
     group
     |> Map.fetch!("tests")
-    |> Enum.reject(&skip_wycheproof_test?/1)
     |> Enum.map(fn test ->
       %{
         tc_id: test["tcId"],
         comment: test["comment"],
         msg: decode_hex_optional(test["msg"]) || <<>>,
-        sig: test["sig"],
+        sig: decode_hex_optional(test["sig"]),
         result: test["result"],
         pubkey: pubkey,
         flags: test["flags"] || []
       }
     end)
-  end
-
-  defp skip_wycheproof_test?(test) do
-    flags = test["flags"] || []
-    Enum.any?(flags, &MapSet.member?(@wycheproof_skip_flags, &1))
   end
 
   defp decode_hex_optional(nil), do: nil

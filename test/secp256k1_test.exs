@@ -140,6 +140,27 @@ defmodule Secp256k1Test do
     assert Secp256k1.ecdsa_valid?(signature, msg_hash, uncompressed_pubkey)
   end
 
+  test "ECDSA signature facade converts DER and normalizes high-S" do
+    low_signature =
+      d(
+        "5dbbddda71772d95ce91cd2d14b592cfbc1dd0aabd6a394b6c2d377bbe59d31d14ddda21494a4e221f0824f0b8b924c43fa43c0ad57dccdaa11f81a6bd4582f6"
+      )
+
+    der_signature =
+      d(
+        "304402205dbbddda71772d95ce91cd2d14b592cfbc1dd0aabd6a394b6c2d377bbe59d31d022014ddda21494a4e221f0824f0b8b924c43fa43c0ad57dccdaa11f81a6bd4582f6"
+      )
+
+    <<r::binary-size(32), low_s::unsigned-big-256>> = low_signature
+
+    high_signature =
+      <<r::binary, :binary.decode_unsigned(@curve_order) - low_s::unsigned-big-256>>
+
+    assert Secp256k1.ecdsa_signature_serialize_der(low_signature) == der_signature
+    assert Secp256k1.ecdsa_signature_parse_der(der_signature) == low_signature
+    assert Secp256k1.ecdsa_signature_normalize(high_signature) == low_signature
+  end
+
   test "facade rejects invalid sizes at its own public boundary" do
     convert_xonly_error =
       assert_raise FunctionClauseError, fn ->

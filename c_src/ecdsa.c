@@ -241,6 +241,115 @@ sign(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 }
 
 static ERL_NIF_TERM
+serialize_der(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+{
+  (void)argc;
+
+  ERL_NIF_TERM result;
+  ErlNifBinary serialized_sig;
+  secp256k1_ecdsa_signature sig;
+  unsigned char der[72];
+  unsigned char *finished;
+  size_t der_len = sizeof(der);
+
+  if (!enif_inspect_binary(env, argv[0], &serialized_sig) || serialized_sig.size != 64)
+  {
+    return enif_make_badarg(env);
+  }
+
+  if (!secp256k1_ecdsa_signature_parse_compact(ctx, &sig, serialized_sig.data))
+  {
+    return enif_make_badarg(env);
+  }
+
+  if (!secp256k1_ecdsa_signature_serialize_der(ctx, der, &der_len, &sig))
+  {
+    return error_result(env, "secp256k1_ecdsa_signature_serialize_der failed");
+  }
+
+  finished = enif_make_new_binary(env, der_len, &result);
+  if (!finished)
+  {
+    return error_result(env, "enif_make_new_binary failed");
+  }
+  memcpy(finished, der, der_len);
+  return result;
+}
+
+static ERL_NIF_TERM
+parse_der(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+{
+  (void)argc;
+
+  ERL_NIF_TERM result;
+  ErlNifBinary der;
+  secp256k1_ecdsa_signature sig;
+  unsigned char serialized_sig[64];
+  unsigned char *finished;
+
+  if (!enif_inspect_binary(env, argv[0], &der) || der.size < 8 || der.size > 72)
+  {
+    return enif_make_badarg(env);
+  }
+
+  if (!secp256k1_ecdsa_signature_parse_der(ctx, &sig, der.data, der.size))
+  {
+    return enif_make_badarg(env);
+  }
+
+  if (!secp256k1_ecdsa_signature_serialize_compact(ctx, serialized_sig, &sig))
+  {
+    return error_result(env, "secp256k1_ecdsa_signature_serialize_compact failed");
+  }
+
+  finished = enif_make_new_binary(env, sizeof(serialized_sig), &result);
+  if (!finished)
+  {
+    return error_result(env, "enif_make_new_binary failed");
+  }
+  memcpy(finished, serialized_sig, sizeof(serialized_sig));
+  return result;
+}
+
+static ERL_NIF_TERM
+normalize(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+{
+  (void)argc;
+
+  ERL_NIF_TERM result;
+  ErlNifBinary serialized_sig;
+  secp256k1_ecdsa_signature sig;
+  secp256k1_ecdsa_signature normalized_sig;
+  unsigned char normalized[64];
+  unsigned char *finished;
+
+  if (!enif_inspect_binary(env, argv[0], &serialized_sig) || serialized_sig.size != 64)
+  {
+    return enif_make_badarg(env);
+  }
+
+  if (!secp256k1_ecdsa_signature_parse_compact(ctx, &sig, serialized_sig.data))
+  {
+    return enif_make_badarg(env);
+  }
+
+  secp256k1_ecdsa_signature_normalize(ctx, &normalized_sig, &sig);
+
+  if (!secp256k1_ecdsa_signature_serialize_compact(ctx, normalized, &normalized_sig))
+  {
+    return error_result(env, "secp256k1_ecdsa_signature_serialize_compact failed");
+  }
+
+  finished = enif_make_new_binary(env, sizeof(normalized), &result);
+  if (!finished)
+  {
+    return error_result(env, "enif_make_new_binary failed");
+  }
+  memcpy(finished, normalized, sizeof(normalized));
+  return result;
+}
+
+static ERL_NIF_TERM
 verify(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
   (void)argc;
@@ -289,6 +398,9 @@ static ErlNifFunc nif_funcs[] = {
     {"compress_pubkey_nif", 1, compress_pubkey},
     {"decompress_pubkey_nif", 1, decompress_pubkey},
     {"sign_nif", 3, sign},
+    {"serialize_der_nif", 1, serialize_der},
+    {"parse_der_nif", 1, parse_der},
+    {"normalize_nif", 1, normalize},
     {"valid_nif?", 3, verify},
 };
 

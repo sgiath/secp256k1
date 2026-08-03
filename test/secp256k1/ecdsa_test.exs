@@ -5,6 +5,15 @@ defmodule Secp256k1Test.ECDSA do
 
   doctest Secp256k1.ECDSA
 
+  @curve_order 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
+
+  @compact_signature d(
+                       "5dbbddda71772d95ce91cd2d14b592cfbc1dd0aabd6a394b6c2d377bbe59d31d14ddda21494a4e221f0824f0b8b924c43fa43c0ad57dccdaa11f81a6bd4582f6"
+                     )
+  @der_signature d(
+                   "304402205dbbddda71772d95ce91cd2d14b592cfbc1dd0aabd6a394b6c2d377bbe59d31d022014ddda21494a4e221f0824f0b8b924c43fa43c0ad57dccdaa11f81a6bd4582f6"
+                 )
+
   setup_all do
     {:ok,
      %{
@@ -90,6 +99,63 @@ defmodule Secp256k1Test.ECDSA do
     pubkey = :binary.copy(<<0>>, 33)
 
     assert ECDSA.valid?(signature, msg_hash, pubkey) == false
+  end
+
+  test "converts compact ECDSA signatures to and from strict DER" do
+    assert ECDSA.serialize_der(@compact_signature) == @der_signature
+    assert ECDSA.parse_der(@der_signature) == @compact_signature
+  end
+
+  test "parse_der rejects malformed DER" do
+    assert_raise ArgumentError, fn -> ECDSA.parse_der(@der_signature <> <<0>>) end
+    assert_raise FunctionClauseError, fn -> ECDSA.parse_der(<<1>>) end
+  end
+
+  test "normalize converts high-S signatures to the low-S form", %{
+    seckey: seckey,
+    pubkey_compressed: pubkey
+  } do
+    msg_hash = :crypto.hash(:sha256, "high-S normalization")
+
+    <<r::binary-size(32), low_s::unsigned-big-256>> =
+      low_signature = ECDSA.sign(msg_hash, seckey, nil)
+
+    high_signature = <<r::binary, @curve_order - low_s::unsigned-big-256>>
+
+    refute ECDSA.valid?(high_signature, msg_hash, pubkey)
+    assert ECDSA.normalize(high_signature) == low_signature
+    assert ECDSA.normalize(low_signature) == low_signature
+
+    normalized_signature = ECDSA.normalize(high_signature)
+    assert ECDSA.valid?(normalized_signature, msg_hash, pubkey)
+  end
+
+  test "parses and normalizes a high-S Bitcoin wire signature", %{
+    seckey: seckey,
+    pubkey_compressed: pubkey
+  } do
+    msg_hash = :crypto.hash(:sha256, "Bitcoin wire signature")
+    <<r::binary-size(32), low_s::unsigned-big-256>> = ECDSA.sign(msg_hash, seckey, nil)
+    high_signature = <<r::binary, @curve_order - low_s::unsigned-big-256>>
+    wire_signature = ECDSA.serialize_der(high_signature) <> <<1>>
+    der_size = byte_size(wire_signature) - 1
+    <<der_signature::binary-size(^der_size), sighash_type>> = wire_signature
+
+    compact_signature = ECDSA.parse_der(der_signature)
+    refute ECDSA.valid?(compact_signature, msg_hash, pubkey)
+
+    normalized_signature = ECDSA.normalize(compact_signature)
+    assert ECDSA.valid?(normalized_signature, msg_hash, pubkey)
+    assert sighash_type == 1
+  end
+
+  test "DER and normalization functions reject invalid compact signatures" do
+    invalid_signature = :binary.copy(<<255>>, 64)
+
+    assert_raise ArgumentError, fn -> ECDSA.serialize_der(invalid_signature) end
+    assert_raise ArgumentError, fn -> ECDSA.normalize(invalid_signature) end
+    assert_raise FunctionClauseError, fn -> ECDSA.serialize_der(<<1>>) end
+    assert_raise FunctionClauseError, fn -> ECDSA.normalize(<<1>>) end
   end
 
   test "valid?/3 rejects invalid-sized binary arguments", %{

@@ -2,6 +2,7 @@
 
 ## unreleased
 
+- Convert ECDSA signatures between compact and strict DER encodings and normalize high-S signatures for interoperability
 - Add `Secp256k1.valid_seckey?/1` and `Secp256k1.valid_pubkey?/1` for validating externally received keys
 - Convert received compressed public keys to x-only form through `Secp256k1.convert_pubkey/2` without requiring the secret key
 - Expose full-key scalar tweaks for BIP-32 derivation and x-only key tweaks, parity checks, and signing keys for Taproot
