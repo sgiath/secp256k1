@@ -36,7 +36,7 @@ Add `lib_secp256k1` to your dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:lib_secp256k1, "~> 0.7.0"}
+    {:lib_secp256k1, "~> 0.8"}
   ]
 end
 ```
