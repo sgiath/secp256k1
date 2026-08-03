@@ -48,4 +48,24 @@ defmodule Secp256k1Test.Schnorr do
     assert Schnorr.valid?(signature, message, :binary.copy(<<0>>, 32)) == false
     assert Schnorr.valid?(signature, message, :binary.copy(<<255>>, 32)) == false
   end
+
+  test "three-argument functions reject invalid-sized binary arguments", %{
+    seckey: seckey,
+    pubkey: pubkey,
+    message: message,
+    message_hash: message_hash
+  } do
+    aux = :binary.copy(<<0>>, 32)
+    signature = :binary.copy(<<0>>, 64)
+
+    assert_raise FunctionClauseError, fn -> Schnorr.sign32(<<1>>, seckey, aux) end
+    assert_raise FunctionClauseError, fn -> Schnorr.sign32(message_hash, <<1>>, aux) end
+    assert_raise FunctionClauseError, fn -> Schnorr.sign32(message_hash, seckey, <<1>>) end
+
+    assert_raise FunctionClauseError, fn -> Schnorr.sign_custom(message, <<1>>, aux) end
+    assert_raise FunctionClauseError, fn -> Schnorr.sign_custom(message, seckey, <<1>>) end
+
+    assert_raise FunctionClauseError, fn -> Schnorr.valid?(<<1>>, message, pubkey) end
+    assert_raise FunctionClauseError, fn -> Schnorr.valid?(signature, message, <<1>>) end
+  end
 end

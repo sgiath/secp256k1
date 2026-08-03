@@ -33,27 +33,28 @@ defmodule Secp256k1.ECDSA do
   Derive compressed pubkey from seckey
   """
   @spec compressed_pubkey(seckey :: Secp256k1.seckey()) :: Secp256k1.compressed_pubkey()
-  def compressed_pubkey(_seckey), do: :erlang.nif_error({:error, :not_loaded})
+  def compressed_pubkey(seckey) when is_seckey(seckey), do: compressed_pubkey_nif(seckey)
 
   @doc """
   Derive uncompressed pubkey from seckey
   """
   @spec uncompressed_pubkey(seckey :: Secp256k1.seckey()) :: Secp256k1.uncompressed_pubkey()
-  def uncompressed_pubkey(_seckey), do: :erlang.nif_error({:error, :not_loaded})
+  def uncompressed_pubkey(seckey) when is_seckey(seckey), do: uncompressed_pubkey_nif(seckey)
 
   @doc """
   Convert uncompressed pubkey to compressed one
   """
   @spec compress_pubkey(pubkey :: Secp256k1.uncompressed_pubkey()) ::
           Secp256k1.compressed_pubkey()
-  def compress_pubkey(_pubkey), do: :erlang.nif_error({:error, :not_loaded})
+  def compress_pubkey(pubkey) when is_uncompressed_pubkey(pubkey), do: compress_pubkey_nif(pubkey)
 
   @doc """
   Convert compressed pubkey to uncompressed one
   """
   @spec decompress_pubkey(pubkey :: Secp256k1.compressed_pubkey()) ::
           Secp256k1.uncompressed_pubkey()
-  def decompress_pubkey(_pubkey), do: :erlang.nif_error({:error, :not_loaded})
+  def decompress_pubkey(pubkey) when is_compressed_pubkey(pubkey),
+    do: decompress_pubkey_nif(pubkey)
 
   @doc """
   Generate an ECDSA signature of a message hash with random RFC 6979 additional data.
@@ -88,7 +89,11 @@ defmodule Secp256k1.ECDSA do
           seckey :: Secp256k1.seckey(),
           nonce_data :: nil | <<_::256>>
         ) :: Secp256k1.ecdsa_sig()
-  def sign(_msg_hash, _seckey, _nonce_data), do: :erlang.nif_error({:error, :not_loaded})
+  def sign(msg_hash, seckey, nonce_data)
+      when is_hash(msg_hash) and is_seckey(seckey) and
+             (is_nil(nonce_data) or is_bin_size(nonce_data, 32)) do
+    sign_nif(msg_hash, seckey, nonce_data)
+  end
 
   @doc """
   Check if ECDSA signature is valid
@@ -107,7 +112,29 @@ defmodule Secp256k1.ECDSA do
           msg_hash :: Secp256k1.hash(),
           pubkey :: Secp256k1.compressed_pubkey() | Secp256k1.uncompressed_pubkey()
         ) :: boolean()
-  def valid?(_signature, _msg_hash, _pubkey), do: :erlang.nif_error({:error, :not_loaded})
+  def valid?(signature, msg_hash, pubkey)
+      when is_ecdsa_sig(signature) and is_hash(msg_hash) and
+             (is_compressed_pubkey(pubkey) or is_uncompressed_pubkey(pubkey)) do
+    valid_nif?(signature, msg_hash, pubkey)
+  end
+
+  @doc false
+  def compressed_pubkey_nif(_seckey), do: :erlang.nif_error({:error, :not_loaded})
+
+  @doc false
+  def uncompressed_pubkey_nif(_seckey), do: :erlang.nif_error({:error, :not_loaded})
+
+  @doc false
+  def compress_pubkey_nif(_pubkey), do: :erlang.nif_error({:error, :not_loaded})
+
+  @doc false
+  def decompress_pubkey_nif(_pubkey), do: :erlang.nif_error({:error, :not_loaded})
+
+  @doc false
+  def sign_nif(_msg_hash, _seckey, _nonce_data), do: :erlang.nif_error({:error, :not_loaded})
+
+  @doc false
+  def valid_nif?(_signature, _msg_hash, _pubkey), do: :erlang.nif_error({:error, :not_loaded})
 
   # internal NIF related
 

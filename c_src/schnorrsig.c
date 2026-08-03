@@ -160,9 +160,9 @@ verify(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 }
 
 static ErlNifFunc nif_funcs[] = {
-    {"sign32", 3, sign32},
-    {"sign_custom", 3, sign_custom},
-    {"valid?", 3, verify},
+    {"sign32_nif", 3, sign32},
+    {"sign_custom_nif", 3, sign_custom},
+    {"valid_nif?", 3, verify},
 };
 
 ERL_NIF_INIT(Elixir.Secp256k1.Schnorr, nif_funcs, &load, NULL, &upgrade, &unload)

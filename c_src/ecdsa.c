@@ -284,12 +284,12 @@ verify(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 }
 
 static ErlNifFunc nif_funcs[] = {
-    {"compressed_pubkey", 1, compressed_pubkey},
-    {"uncompressed_pubkey", 1, uncompressed_pubkey},
-    {"compress_pubkey", 1, compress_pubkey},
-    {"decompress_pubkey", 1, decompress_pubkey},
-    {"sign", 3, sign},
-    {"valid?", 3, verify},
+    {"compressed_pubkey_nif", 1, compressed_pubkey},
+    {"uncompressed_pubkey_nif", 1, uncompressed_pubkey},
+    {"compress_pubkey_nif", 1, compress_pubkey},
+    {"decompress_pubkey_nif", 1, decompress_pubkey},
+    {"sign_nif", 3, sign},
+    {"valid_nif?", 3, verify},
 };
 
 ERL_NIF_INIT(Elixir.Secp256k1.ECDSA, nif_funcs, &load, NULL, &upgrade, &unload)

@@ -29,6 +29,13 @@ defmodule Secp256k1Test.ECDSA do
     assert ECDSA.decompress_pubkey(pc) == pu
   end
 
+  test "public-key functions reject invalid-sized binary arguments" do
+    assert_raise FunctionClauseError, fn -> ECDSA.compressed_pubkey(<<1>>) end
+    assert_raise FunctionClauseError, fn -> ECDSA.uncompressed_pubkey(<<1>>) end
+    assert_raise FunctionClauseError, fn -> ECDSA.compress_pubkey(<<1>>) end
+    assert_raise FunctionClauseError, fn -> ECDSA.decompress_pubkey(<<1>>) end
+  end
+
   test "sign/3 with nil uses deterministic RFC 6979" do
     seckey = d("0000000000000000000000000000000000000000000000000000000000000001")
     msg_hash = d("0000000000000000000000000000000000000000000000000000000000000002")
@@ -54,6 +61,14 @@ defmodule Secp256k1Test.ECDSA do
     assert ECDSA.sign(msg_hash, seckey, nonce_data) == expected_signature
   end
 
+  test "sign/3 rejects invalid-sized binary arguments", %{seckey: seckey} do
+    msg_hash = :crypto.hash(:sha256, "hello")
+
+    assert_raise FunctionClauseError, fn -> ECDSA.sign(<<1>>, seckey, nil) end
+    assert_raise FunctionClauseError, fn -> ECDSA.sign(msg_hash, <<1>>, nil) end
+    assert_raise FunctionClauseError, fn -> ECDSA.sign(msg_hash, seckey, <<1>>) end
+  end
+
   test "sign/2 injects random nonce data", %{seckey: seckey} do
     msg_hash = :crypto.hash(:sha256, "hello")
 
@@ -75,5 +90,17 @@ defmodule Secp256k1Test.ECDSA do
     pubkey = :binary.copy(<<0>>, 33)
 
     assert ECDSA.valid?(signature, msg_hash, pubkey) == false
+  end
+
+  test "valid?/3 rejects invalid-sized binary arguments", %{
+    seckey: seckey,
+    pubkey_compressed: pubkey
+  } do
+    msg_hash = :crypto.hash(:sha256, "hello")
+    signature = ECDSA.sign(msg_hash, seckey)
+
+    assert_raise FunctionClauseError, fn -> ECDSA.valid?(<<1>>, msg_hash, pubkey) end
+    assert_raise FunctionClauseError, fn -> ECDSA.valid?(signature, <<1>>, pubkey) end
+    assert_raise FunctionClauseError, fn -> ECDSA.valid?(signature, msg_hash, <<1>>) end
   end
 end

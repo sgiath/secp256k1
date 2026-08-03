@@ -3,6 +3,8 @@ defmodule Secp256k1.Extrakeys do
   Module implementing extrakeys functions of secp256k1
   """
 
+  import Secp256k1.Guards
+
   @doc """
   Derive xonly pubkey from seckey
 
@@ -15,7 +17,10 @@ defmodule Secp256k1.Extrakeys do
 
   """
   @spec xonly_pubkey(Secp256k1.seckey()) :: Secp256k1.xonly_pubkey()
-  def xonly_pubkey(_seckey), do: :erlang.nif_error({:error, :not_loaded})
+  def xonly_pubkey(seckey) when is_seckey(seckey), do: xonly_pubkey_nif(seckey)
+
+  @doc false
+  def xonly_pubkey_nif(_seckey), do: :erlang.nif_error({:error, :not_loaded})
 
   # internal NIF related
 

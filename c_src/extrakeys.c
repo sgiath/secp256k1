@@ -58,7 +58,7 @@ cleanup:
 }
 
 static ErlNifFunc nif_funcs[] = {
-    {"xonly_pubkey", 1, xonly_pubkey},
+    {"xonly_pubkey_nif", 1, xonly_pubkey},
 };
 
 ERL_NIF_INIT(Elixir.Secp256k1.Extrakeys, nif_funcs, &load, NULL, &upgrade, &unload)

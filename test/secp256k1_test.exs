@@ -77,4 +77,42 @@ defmodule Secp256k1Test do
     assert Secp256k1.ecdsa_valid?(signature, msg_hash, compressed_pubkey)
     assert Secp256k1.ecdsa_valid?(signature, msg_hash, uncompressed_pubkey)
   end
+
+  test "facade rejects invalid sizes at its own public boundary" do
+    ecdh_error =
+      assert_raise FunctionClauseError, fn ->
+        Secp256k1.ecdh(<<1>>, <<1>>)
+      end
+
+    ecdsa_sign_error =
+      assert_raise FunctionClauseError, fn ->
+        Secp256k1.ecdsa_sign(<<1>>, <<1>>)
+      end
+
+    ecdsa_error =
+      assert_raise FunctionClauseError, fn ->
+        Secp256k1.ecdsa_valid?(<<1>>, <<1>>, <<1>>)
+      end
+
+    schnorr_sign_error =
+      assert_raise FunctionClauseError, fn ->
+        Secp256k1.schnorr_sign("message", <<1>>)
+      end
+
+    schnorr_error =
+      assert_raise FunctionClauseError, fn ->
+        Secp256k1.schnorr_valid?(<<1>>, "message", <<1>>)
+      end
+
+    assert ecdh_error.module == Secp256k1
+    assert ecdh_error.function == :ecdh
+    assert ecdsa_sign_error.module == Secp256k1
+    assert ecdsa_sign_error.function == :ecdsa_sign
+    assert ecdsa_error.module == Secp256k1
+    assert ecdsa_error.function == :ecdsa_valid?
+    assert schnorr_sign_error.module == Secp256k1
+    assert schnorr_sign_error.function == :schnorr_sign
+    assert schnorr_error.module == Secp256k1
+    assert schnorr_error.function == :schnorr_valid?
+  end
 end

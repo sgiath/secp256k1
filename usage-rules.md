@@ -65,11 +65,11 @@ true = Secp256k1.schnorr_valid?(signature, msg_hash, xonly_pubkey)  # x-only pub
 ## Error Handling
 
 ```elixir
-# Functions raise ArgumentError for invalid inputs
+# Stable APIs raise FunctionClauseError for invalid-sized binary inputs
 try do
   Secp256k1.ecdsa_sign(<<1, 2, 3>>, seckey)  # msg_hash too short
 rescue
-  ArgumentError -> # handle invalid input
+  FunctionClauseError -> # handle invalid size
 end
 
 # MuSig functions return {:error, reason} tuples
@@ -81,13 +81,13 @@ end
 
 ## Common Mistakes
 
-| Mistake                 | Problem                             | Fix                                                        |
-| ----------------------- | ----------------------------------- | ---------------------------------------------------------- |
-| Signing raw message     | Library expects 32-byte hash        | Use `:crypto.hash(:sha256, msg)` first                     |
-| Wrong pubkey type       | ECDSA/Schnorr use different formats | ECDSA: `:compressed` or `:uncompressed`, Schnorr: `:xonly` |
-| Reusing MuSig nonces    | Leaks secret key                    | Always call `nonce_gen/5` fresh                            |
-| Invalid binary size     | Functions raise ArgumentError       | Validate sizes: seckey=32, hash=32, etc.                   |
-| Forgetting to aggregate | MuSig requires full protocol        | Follow all 6 steps in MuSig guide                          |
+| Mistake                 | Problem                               | Fix                                                        |
+| ----------------------- | ------------------------------------- | ---------------------------------------------------------- |
+| Signing raw message     | Library expects 32-byte hash          | Use `:crypto.hash(:sha256, msg)` first                     |
+| Wrong pubkey type       | ECDSA/Schnorr use different formats   | ECDSA: `:compressed` or `:uncompressed`, Schnorr: `:xonly` |
+| Reusing MuSig nonces    | Leaks secret key                      | Always call `nonce_gen/5` fresh                            |
+| Invalid binary size     | Stable APIs raise FunctionClauseError | Use documented sizes: seckey=32, hash=32, etc.             |
+| Forgetting to aggregate | MuSig requires full protocol          | Follow all 6 steps in MuSig guide                          |
 
 ## MuSig2 Protocol (Summary)
 

@@ -28,9 +28,11 @@ defmodule Secp256k1.Schnorr do
 
   """
   @spec sign(message :: binary(), seckey :: Secp256k1.seckey()) :: Secp256k1.schnorr_sig()
-  def sign(message, seckey) when is_hash(message), do: sign32(message, seckey)
+  def sign(message, seckey) when is_hash(message) and is_seckey(seckey),
+    do: sign32(message, seckey)
 
-  def sign(message, seckey) when is_binary(message), do: sign_custom(message, seckey)
+  def sign(message, seckey) when is_binary(message) and is_seckey(seckey),
+    do: sign_custom(message, seckey)
 
   @doc """
   Generate Schnorr signature of a hash (AUX is randomly generated)
@@ -49,13 +51,16 @@ defmodule Secp256k1.Schnorr do
           seckey :: Secp256k1.seckey(),
           aux :: <<_::32, _::_*8>>
         ) :: Secp256k1.schnorr_sig()
-  def sign32(_msg_hash, _seckey, _aux), do: :erlang.nif_error({:error, :not_loaded})
+  def sign32(msg_hash, seckey, aux)
+      when is_hash(msg_hash) and is_seckey(seckey) and is_bin_size(aux, 32) do
+    sign32_nif(msg_hash, seckey, aux)
+  end
 
   @doc """
   Generate Schnorr signature of arbitrary message (AUX is randomly generated)
   """
   @spec sign_custom(message :: binary(), seckey :: Secp256k1.seckey()) :: Secp256k1.schnorr_sig()
-  def sign_custom(message, seckey) when is_seckey(seckey) do
+  def sign_custom(message, seckey) when is_binary(message) and is_seckey(seckey) do
     sign_custom(message, seckey, :crypto.strong_rand_bytes(32))
   end
 
@@ -64,7 +69,10 @@ defmodule Secp256k1.Schnorr do
   """
   @spec sign_custom(message :: binary(), seckey :: Secp256k1.seckey(), aux :: <<_::32, _::_*8>>) ::
           Secp256k1.schnorr_sig()
-  def sign_custom(_message, _seckey, _aux), do: :erlang.nif_error({:error, :not_loaded})
+  def sign_custom(message, seckey, aux)
+      when is_binary(message) and is_seckey(seckey) and is_bin_size(aux, 32) do
+    sign_custom_nif(message, seckey, aux)
+  end
 
   @doc """
   Validate Schnorr signature
@@ -83,7 +91,19 @@ defmodule Secp256k1.Schnorr do
           message :: binary(),
           pubkey :: Secp256k1.xonly_pubkey()
         ) :: boolean()
-  def valid?(_signature, _message, _pubkey), do: :erlang.nif_error({:error, :not_loaded})
+  def valid?(signature, message, pubkey)
+      when is_schnorr_sig(signature) and is_binary(message) and is_xonly_pubkey(pubkey) do
+    valid_nif?(signature, message, pubkey)
+  end
+
+  @doc false
+  def sign32_nif(_msg_hash, _seckey, _aux), do: :erlang.nif_error({:error, :not_loaded})
+
+  @doc false
+  def sign_custom_nif(_message, _seckey, _aux), do: :erlang.nif_error({:error, :not_loaded})
+
+  @doc false
+  def valid_nif?(_signature, _message, _pubkey), do: :erlang.nif_error({:error, :not_loaded})
 
   # internal NIF related
 

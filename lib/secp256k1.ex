@@ -193,7 +193,11 @@ defmodule Secp256k1 do
   """
   @spec ecdh(seckey :: seckey(), pubkey :: compressed_pubkey() | uncompressed_pubkey()) ::
           shared_secret()
-  defdelegate ecdh(seckey, pubkey), to: Secp256k1.ECDH
+  def ecdh(seckey, pubkey)
+      when is_seckey(seckey) and
+             (is_compressed_pubkey(pubkey) or is_uncompressed_pubkey(pubkey)) do
+    Secp256k1.ECDH.ecdh(seckey, pubkey)
+  end
 
   @doc """
   Create an ECDSA signature
@@ -206,7 +210,9 @@ defmodule Secp256k1 do
     - `signature` ECDSA signature serialized in compressed format (64 byte binary)
   """
   @spec ecdsa_sign(msg_hash :: hash(), seckey :: seckey()) :: ecdsa_sig()
-  defdelegate ecdsa_sign(msg_hash, seckey), to: Secp256k1.ECDSA, as: :sign
+  def ecdsa_sign(msg_hash, seckey) when is_hash(msg_hash) and is_seckey(seckey) do
+    Secp256k1.ECDSA.sign(msg_hash, seckey)
+  end
 
   @doc """
   Validate ECDSA signature
@@ -221,7 +227,11 @@ defmodule Secp256k1 do
           msg_hash :: hash(),
           pubkey :: compressed_pubkey() | uncompressed_pubkey()
         ) :: boolean()
-  defdelegate ecdsa_valid?(signature, msg_hash, pubkey), to: Secp256k1.ECDSA, as: :valid?
+  def ecdsa_valid?(signature, msg_hash, pubkey)
+      when is_ecdsa_sig(signature) and is_hash(msg_hash) and
+             (is_compressed_pubkey(pubkey) or is_uncompressed_pubkey(pubkey)) do
+    Secp256k1.ECDSA.valid?(signature, msg_hash, pubkey)
+  end
 
   @doc """
   Calculate Schnorr signature according to BIP 340
@@ -237,7 +247,9 @@ defmodule Secp256k1 do
   _Note:_ automatic random nonce is added to every run so generated signature is not deterministic
   """
   @spec schnorr_sign(message :: binary(), seckey :: seckey()) :: schnorr_sig()
-  defdelegate schnorr_sign(message, seckey), to: Secp256k1.Schnorr, as: :sign
+  def schnorr_sign(message, seckey) when is_binary(message) and is_seckey(seckey) do
+    Secp256k1.Schnorr.sign(message, seckey)
+  end
 
   @doc """
   Validate Schnorr signature
@@ -252,5 +264,8 @@ defmodule Secp256k1 do
           message :: binary(),
           pubkey :: xonly_pubkey()
         ) :: boolean()
-  defdelegate schnorr_valid?(signature, message, pubkey), to: Secp256k1.Schnorr, as: :valid?
+  def schnorr_valid?(signature, message, pubkey)
+      when is_schnorr_sig(signature) and is_binary(message) and is_xonly_pubkey(pubkey) do
+    Secp256k1.Schnorr.valid?(signature, message, pubkey)
+  end
 end

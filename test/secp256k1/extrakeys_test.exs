@@ -16,4 +16,8 @@ defmodule Secp256k1Test.Extrakeys do
   test "successful", %{seckey: s, pubkey: p} do
     assert Extrakeys.xonly_pubkey(s) == p
   end
+
+  test "rejects invalid-sized secret keys" do
+    assert_raise FunctionClauseError, fn -> Extrakeys.xonly_pubkey(<<1>>) end
+  end
 end
