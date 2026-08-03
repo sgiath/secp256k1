@@ -56,6 +56,18 @@ defmodule Secp256k1Test do
     assert pubkey == p
   end
 
+  test "convert_pubkey/2 converts between compressed and uncompressed formats", %{seckey: seckey} do
+    compressed_pubkey = Secp256k1.pubkey(seckey, :compressed)
+    uncompressed_pubkey = Secp256k1.pubkey(seckey, :uncompressed)
+
+    assert Secp256k1.convert_pubkey(uncompressed_pubkey, :compressed) == compressed_pubkey
+    assert Secp256k1.convert_pubkey(compressed_pubkey, :uncompressed) == uncompressed_pubkey
+  end
+
+  test "convert_pubkey/2 returns an error for a malformed public key" do
+    assert {:error, _reason} = Secp256k1.convert_pubkey(<<0::520>>, :compressed)
+  end
+
   test "ecdsa_valid?/3 accepts compressed and uncompressed public keys" do
     {seckey, compressed_pubkey} = Secp256k1.keypair(<<1::256>>, :compressed)
     uncompressed_pubkey = Secp256k1.pubkey(seckey, :uncompressed)

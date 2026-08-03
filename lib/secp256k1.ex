@@ -1,6 +1,9 @@
 defmodule Secp256k1 do
   @moduledoc """
-  This is unified API for all secp256k1 functions this library provides
+  This is the unified API for the stable secp256k1 functions this library provides.
+
+  Experimental MuSig2 signing uses process-local resources and intentionally remains outside
+  this facade. See `Secp256k1.MuSig` for its protocol API.
 
   ## Examples
 
@@ -121,6 +124,32 @@ defmodule Secp256k1 do
 
   def pubkey(seckey, :uncompressed) when is_seckey(seckey) do
     Secp256k1.ECDSA.pubkey(seckey, compress: false)
+  end
+
+  @doc """
+  Convert an ECDSA public key between compressed and uncompressed formats.
+
+  Inputs
+    - `pubkey` an uncompressed public key when converting to `:compressed`, or a compressed public
+      key when converting to `:uncompressed`
+    - `type` the target format, either `:compressed` or `:uncompressed`
+
+  Returns the converted public key, or `{:error, reason}` when the correctly sized input does not
+  encode a valid secp256k1 public key.
+  """
+  @spec convert_pubkey(
+          pubkey :: compressed_pubkey() | uncompressed_pubkey(),
+          type :: :compressed | :uncompressed
+        ) ::
+          compressed_pubkey()
+          | uncompressed_pubkey()
+          | {:error, binary() | :allocation_failed}
+  def convert_pubkey(pubkey, :compressed) when is_uncompressed_pubkey(pubkey) do
+    Secp256k1.ECDSA.compress_pubkey(pubkey)
+  end
+
+  def convert_pubkey(pubkey, :uncompressed) when is_compressed_pubkey(pubkey) do
+    Secp256k1.ECDSA.decompress_pubkey(pubkey)
   end
 
   @doc """
