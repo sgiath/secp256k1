@@ -166,7 +166,7 @@ Secp256k1.schnorr_valid?(final_sig, msg, agg_pubkey)
 ## Platform Notes
 
 - **Linux**: Primary platform, fully supported
-- **macOS**: Supported with Homebrew dependencies (`brew install autoconf automake libtool`)
+- **macOS**: Supported with Xcode Command Line Tools (`xcode-select --install`)
 - **Windows**: Not tested
 
 ## Version Compatibility

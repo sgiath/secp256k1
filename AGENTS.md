@@ -12,7 +12,7 @@ Elixir bindings for bitcoin-core `secp256k1` v0.7.1. The public Elixir facade de
 |-- c_src/            # first-party C NIF glue; see c_src/AGENTS.md
 |-- test/             # ExUnit helpers, protocol tests, vectors; see test/AGENTS.md
 |-- docs/             # ExDoc source pages, not generated output
-|-- Makefile          # fetch/configure/build upstream secp256k1 + one NIF .so
+|-- Makefile          # verify/extract vendored secp256k1 tarball + build one NIF .so
 `-- usage-rules.md    # user-facing API rules and common mistakes
 ```
 
@@ -61,7 +61,7 @@ Elixir bindings for bitcoin-core `secp256k1` v0.7.1. The public Elixir facade de
 - Never serialize, copy, or send MuSig `secnonce`, `session`, or `keyagg_cache` as if they were binaries. They are process-local NIF resources.
 - Do not use custom AUX APIs (`ECDSA.sign/3`, `Schnorr.sign32/3`, `Schnorr.sign_custom/3`) unless a test vector explicitly requires it. Prefer 2-arg signers.
 - Do not mix pubkey formats: ECDSA verifies compressed 33-byte pubkeys; Schnorr verifies x-only 32-byte pubkeys.
-- Do not edit `c_src/secp256k1/`, `_build/`, `deps/`, `doc/`, or `priv/*.so` as source. They are fetched, generated, or build output.
+- Do not edit `c_src/secp256k1/`, `_build/`, `deps/`, `doc/`, or `priv/*.so` as source. They are extracted, generated, or build output.
 - Do not weaken vector tests or delete failing cases. Fix implementation or update vectors only with provenance.
 
 ## COMMANDS
@@ -78,7 +78,8 @@ make distclean
 
 ## NOTES
 
-- `Makefile` clones upstream `bitcoin-core/secp256k1` at `v0.7.1`, configures `--enable-experimental --enable-module-musig`, builds a static lib, then links one `priv/secp256k1_nif.so` from all first-party native objects.
+- `Makefile` verifies the SHA256 of the vendored `c_src/secp256k1-<version>.tar.gz`, extracts it to `c_src/secp256k1/`, configures `--enable-experimental --enable-module-musig`, builds a static lib, then links one `priv/secp256k1_nif.so` from all first-party native objects.
 - `ERTS_INCLUDE_DIR` must be set for native compilation; `elixir_make` usually supplies it.
-- `mix clean` maps to native `distclean`, deleting fetched `c_src/secp256k1/`.
+- `mix clean` maps to native `distclean`, deleting extracted `c_src/secp256k1/`.
+- Maintainers update the vendored release with `make vendor VERSION=vX.Y.Z`; the workflow verifies the signed upstream tag with GPG by default, and `--allow-unverified` is an explicit override.
 - Backlog.md MCP is the project task system. Use MCP tools for task creation/editing; do not edit backlog markdown directly.

@@ -2,7 +2,7 @@
 
 ## OVERVIEW
 
-First-party C glue for Elixir NIFs. All first-party C sources link into one `priv/secp256k1_nif.so`; `c_src/secp256k1/` is fetched upstream code, not local source.
+First-party C glue for Elixir NIFs. All first-party C sources link into one `priv/secp256k1_nif.so`; `c_src/secp256k1/` is upstream code extracted from the vendored tarball, not local source.
 
 ## WHERE TO LOOK
 
@@ -42,7 +42,7 @@ First-party C glue for Elixir NIFs. All first-party C sources link into one `pri
 
 ## ANTI-PATTERNS
 
-- Do not edit `c_src/secp256k1/` for wrapper changes. It is cloned from upstream `bitcoin-core/secp256k1` by the Makefile.
+- Do not edit `c_src/secp256k1/` for wrapper changes. It is extracted from the vendored tarball by the Makefile.
 - Do not add fallback parsing paths for malformed binaries. Reject with badarg unless the API is explicitly a boolean verifier.
 - Do not allocate BEAM binaries before all cheap validation succeeds unless every failure path releases them.
 - Do not bypass `random.h` for nonce/context randomization.

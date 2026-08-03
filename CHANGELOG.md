@@ -2,6 +2,7 @@
 
 ## unreleased
 
+- Ship the upstream libsecp256k1 source as a vendored tarball so user builds no longer need git or autotools
 - Convert ECDSA signatures between compact and strict DER encodings and normalize high-S signatures for interoperability
 - Add `Secp256k1.valid_seckey?/1` and `Secp256k1.valid_pubkey?/1` for validating externally received keys
 - Convert received compressed public keys to x-only form through `Secp256k1.convert_pubkey/2` without requiring the secret key

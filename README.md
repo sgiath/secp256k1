@@ -26,18 +26,20 @@ Elixir NIF bindings for the [bitcoin-core/secp256k1](https://github.com/bitcoin-
 
 ### System Dependencies
 
-The library compiles the underlying C library automatically, but requires build tools:
+The package includes the upstream libsecp256k1 source as a vendored tarball with a pre-generated configure script. Users need `make`, a C compiler, and standard Unix tools `tar` plus either `sha256sum` or `shasum`, which are present in standard Unix userland. No network, git, autoconf, automake, or libtool is required to compile the package.
 
 **Linux (Ubuntu/Debian)**
 
 ```bash
-sudo apt-get install build-essential automake libtool autoconf
+sudo apt-get install build-essential
 ```
 
 **macOS**
 
+Install Xcode Command Line Tools:
+
 ```bash
-brew install make gcc autoconf automake libtool
+xcode-select --install
 ```
 
 ### Elixir Dependency
@@ -192,11 +194,11 @@ Secp256k1.schnorr_valid?(final_sig, msg_hash, agg_pubkey)
 ## Platform Support
 
 - **Linux** - fully supported, primary development platform
-- **macOS** - supported with Homebrew dependencies
+- **macOS** - supported with Xcode Command Line Tools
 - **Windows** - not tested, contributions welcome
 
 ## License
 
 [WTFPL](LICENSE) - Do What The Fuck You Want To Public License
 
-The underlying secp256k1 C library is MIT licensed.
+The underlying secp256k1 C library is MIT licensed. Its `COPYING` file ships inside the vendored tarball, and the Hex package metadata declares both WTFPL and MIT licenses.

@@ -13,18 +13,20 @@ This guide covers the basic usage of the `lib_secp256k1` library for Elixir.
 
 ### System Dependencies
 
-The library requires a C compiler and standard build tools to compile the underlying `secp256k1` library.
+The package includes the upstream libsecp256k1 source as a vendored tarball with a pre-generated configure script. Users need `make`, a C compiler, and standard Unix tools `tar` plus either `sha256sum` or `shasum`, which are present in standard Unix userland. No network, git, autoconf, automake, or libtool is required to compile the package.
 
-**MacOS**
+**macOS**
+
+Install Xcode Command Line Tools:
 
 ```bash
-brew install make gcc autoconf autobuild
+xcode-select --install
 ```
 
 **Linux (Ubuntu/Debian)**
 
 ```bash
-sudo apt-get install build-essential automake libtool autoconf
+sudo apt-get install build-essential
 ```
 
 ### Elixir Dependency
