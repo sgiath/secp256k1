@@ -248,7 +248,8 @@ verify(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   }
 
   // check arguments size
-  if (serialized_sig.size != 64 || msg_hash.size != 32 || serialized_pubkey.size != 33)
+  if (serialized_sig.size != 64 || msg_hash.size != 32 ||
+      (serialized_pubkey.size != 33 && serialized_pubkey.size != 65))
   {
     return enif_make_badarg(env);
   }

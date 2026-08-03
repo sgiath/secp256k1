@@ -98,7 +98,7 @@ defmodule Secp256k1.ECDSA do
   @spec valid?(
           signature :: Secp256k1.ecdsa_sig(),
           msg_hash :: Secp256k1.hash(),
-          pubkey :: Secp256k1.compressed_pubkey()
+          pubkey :: Secp256k1.compressed_pubkey() | Secp256k1.uncompressed_pubkey()
         ) :: boolean()
   def valid?(_signature, _msg_hash, _pubkey), do: :erlang.nif_error({:error, :not_loaded})
 

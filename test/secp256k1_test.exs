@@ -55,4 +55,14 @@ defmodule Secp256k1Test do
     pubkey = Secp256k1.pubkey(s, :xonly)
     assert pubkey == p
   end
+
+  test "ecdsa_valid?/3 accepts compressed and uncompressed public keys" do
+    {seckey, compressed_pubkey} = Secp256k1.keypair(<<1::256>>, :compressed)
+    uncompressed_pubkey = Secp256k1.pubkey(seckey, :uncompressed)
+    msg_hash = :crypto.hash(:sha256, "hello")
+    signature = Secp256k1.ecdsa_sign(msg_hash, seckey)
+
+    assert Secp256k1.ecdsa_valid?(signature, msg_hash, compressed_pubkey)
+    assert Secp256k1.ecdsa_valid?(signature, msg_hash, uncompressed_pubkey)
+  end
 end

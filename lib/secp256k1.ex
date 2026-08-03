@@ -185,10 +185,13 @@ defmodule Secp256k1 do
   Inputs
     - `signature` 64 byte long binary
     - `msg_hash` 32 byte long message hash that was signed
-    - `pubkey` compressed pubkey (33 byte long binary)
+    - `pubkey` compressed (33-byte) or uncompressed (65-byte) public key
   """
-  @spec ecdsa_valid?(signature :: ecdsa_sig(), msg_hash :: hash(), pubkey :: compressed_pubkey()) ::
-          boolean()
+  @spec ecdsa_valid?(
+          signature :: ecdsa_sig(),
+          msg_hash :: hash(),
+          pubkey :: compressed_pubkey() | uncompressed_pubkey()
+        ) :: boolean()
   defdelegate ecdsa_valid?(signature, msg_hash, pubkey), to: Secp256k1.ECDSA, as: :valid?
 
   @doc """
