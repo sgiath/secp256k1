@@ -2,6 +2,7 @@
 
 ## unreleased
 
+- Accept compressed and uncompressed public keys in ECDSA signature verification
 - Fix cross-compilation by applying macOS linker flags only to native builds and passing the target host triplet to Autotools ([#2](https://github.com/sgiath/secp256k1/pull/2), thanks [Kentaro Kuribayashi (@kentaro)](https://github.com/kentaro))
 - Pin the fetched libsecp256k1 source to its full commit SHA and reject mismatched checkouts
 
