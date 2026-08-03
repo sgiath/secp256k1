@@ -116,7 +116,7 @@ is_valid = Secp256k1.ecdsa_valid?(signature, msg_hash, pubkey)
 > libsecp256k1/Bitcoin-oriented contract:
 >
 > - sign an already prepared 32-byte message hash
-> - verify with compressed secp256k1 public keys
+> - verify with compressed or uncompressed secp256k1 public keys
 > - exchange compact 64-byte `r || s` signatures
 
 ## Schnorr Signatures

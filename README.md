@@ -86,7 +86,7 @@ Secp256k1.ecdsa_valid?(signature, msg_hash, pubkey)
 > standard Erlang/OpenSSL interface with digest selection and DER-encoded
 > signatures. Use `Secp256k1.ecdsa_sign/2` and `Secp256k1.ecdsa_valid?/3` when
 > you want the libsecp256k1/Bitcoin-oriented contract: sign an already prepared
-> 32-byte message hash, use compressed secp256k1 public keys, and exchange
+> 32-byte message hash, use compressed or uncompressed secp256k1 public keys, and exchange
 > compact 64-byte `r || s` signatures.
 
 ### Schnorr Signatures (BIP-340)
