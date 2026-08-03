@@ -180,7 +180,8 @@ sign(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   (void)argc;
 
   ERL_NIF_TERM result;
-  ErlNifBinary msg_hash, seckey, auxiliary_rand;
+  ErlNifBinary msg_hash, seckey, nonce_data;
+  const unsigned char *ndata = NULL;
 
   secp256k1_ecdsa_signature sig;
 
@@ -189,10 +190,18 @@ sign(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 
   /* load arguments given by Elixir */
   if (!enif_inspect_binary(env, argv[0], &msg_hash) ||
-      !enif_inspect_binary(env, argv[1], &seckey) ||
-      !enif_inspect_binary(env, argv[2], &auxiliary_rand))
+      !enif_inspect_binary(env, argv[1], &seckey))
   {
     return enif_make_badarg(env);
+  }
+
+  if (!enif_is_identical(argv[2], enif_make_atom(env, "nil")))
+  {
+    if (!enif_inspect_binary(env, argv[2], &nonce_data) || nonce_data.size != 32)
+    {
+      return enif_make_badarg(env);
+    }
+    ndata = nonce_data.data;
   }
 
   /* check expected arguments size */
@@ -206,13 +215,15 @@ sign(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     return enif_make_badarg(env);
   }
 
-  if (auxiliary_rand.size != 32)
-  {
-    return enif_make_badarg(env);
-  }
-
   /* Generate a ECDSA signature */
-  if (!secp256k1_ecdsa_sign(ctx, &sig, msg_hash.data, seckey.data, NULL, auxiliary_rand.data))
+  if (!secp256k1_ecdsa_sign(
+      ctx,
+      &sig,
+      msg_hash.data,
+      seckey.data,
+      secp256k1_nonce_function_rfc6979,
+      ndata
+    ))
   {
     return error_result(env, "secp256k1_ecdsa_sign failed");
   }

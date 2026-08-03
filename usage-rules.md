@@ -57,7 +57,7 @@ true = Secp256k1.schnorr_valid?(signature, msg_hash, xonly_pubkey)  # x-only pub
 ### DON'T
 
 - **Don't reuse nonces in MuSig2**: Call `nonce_gen/5` fresh for every signature attempt. Nonce reuse leaks the secret key.
-- **Don't use custom AUX values**: `sign/3` and `sign32/3` exist but are NOT RECOMMENDED. Use 2-arg versions.
+- **Don't use custom Schnorr AUX values**: `sign32/3` exists but is NOT RECOMMENDED. Use the 2-arg version.
 - **Don't mix pubkey formats**: ECDSA uses compressed (33 bytes) or uncompressed (65 bytes); Schnorr uses x-only (32 bytes).
 - **Don't sign unhashed data**: The library expects pre-hashed 32-byte messages for most operations.
 - **Don't serialize MuSig secnonces**: They're Erlang resources, not binaries. Attempting to copy them will fail.

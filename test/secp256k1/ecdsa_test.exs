@@ -29,6 +29,37 @@ defmodule Secp256k1Test.ECDSA do
     assert ECDSA.decompress_pubkey(pc) == pu
   end
 
+  test "sign/3 with nil uses deterministic RFC 6979" do
+    seckey = d("0000000000000000000000000000000000000000000000000000000000000001")
+    msg_hash = d("0000000000000000000000000000000000000000000000000000000000000002")
+
+    expected_signature =
+      d(
+        "56166f3a4b7d34af3bcc6c8a92a8f3c40309db9f22d7c83f8c5b87b374fd8047348ebb966e4e4c5ab15c43277b857c2844e45958f79b1e511163ca560b2ab246"
+      )
+
+    assert ECDSA.sign(msg_hash, seckey, nil) == expected_signature
+  end
+
+  test "sign/3 accepts 32-byte nonce data" do
+    seckey = d("0000000000000000000000000000000000000000000000000000000000000001")
+    msg_hash = d("0000000000000000000000000000000000000000000000000000000000000002")
+    nonce_data = d("0000000000000000000000000000000000000000000000000000000000000003")
+
+    expected_signature =
+      d(
+        "07c27f689e6c426d08caada20c3f896d754c1ac8208a90600cb6a3fc37ba6b4c39b4343acb2c54c14917f43e6af781445819bdb0af55536dc026a24c0ead5617"
+      )
+
+    assert ECDSA.sign(msg_hash, seckey, nonce_data) == expected_signature
+  end
+
+  test "sign/2 injects random nonce data", %{seckey: seckey} do
+    msg_hash = :crypto.hash(:sha256, "hello")
+
+    refute ECDSA.sign(msg_hash, seckey) == ECDSA.sign(msg_hash, seckey)
+  end
+
   test "valid? returns false for compact signatures that fail parsing", %{
     pubkey_compressed: pubkey
   } do

@@ -56,7 +56,7 @@ defmodule Secp256k1.ECDSA do
   def decompress_pubkey(_pubkey), do: :erlang.nif_error({:error, :not_loaded})
 
   @doc """
-  Generate ECDSA signature of message hash (AUX is randomly generated)
+  Generate an ECDSA signature of a message hash with random RFC 6979 additional data.
 
   ## Examples
 
@@ -74,14 +74,21 @@ defmodule Secp256k1.ECDSA do
   end
 
   @doc """
-  Generate ECDSA signature of message hash and specify AUX value - NOT RECOMMENDED
+  Generate an ECDSA signature with explicit RFC 6979 additional data.
+
+  > #### Deterministic signing is for tests only {: .warning}
+  >
+  > Pass `nil` only in tests that require reproducible signatures, such as
+  > interoperability and test-vector checks. Use `sign/2` for normal signing.
+
+  A 32-byte value is passed as libsecp256k1 `ndata` to derive a synthetic nonce.
   """
   @spec sign(
           msg_hash :: Secp256k1.hash(),
           seckey :: Secp256k1.seckey(),
-          aux :: <<_::256>>
+          nonce_data :: nil | <<_::256>>
         ) :: Secp256k1.ecdsa_sig()
-  def sign(_msg_hash, _seckey, _aux), do: :erlang.nif_error({:error, :not_loaded})
+  def sign(_msg_hash, _seckey, _nonce_data), do: :erlang.nif_error({:error, :not_loaded})
 
   @doc """
   Check if ECDSA signature is valid
