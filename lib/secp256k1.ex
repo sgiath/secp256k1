@@ -114,6 +114,34 @@ defmodule Secp256k1 do
   @type shared_secret() :: <<_::256>>
 
   @doc """
+  Checks whether a 32-byte binary is a valid secp256k1 secret key.
+
+  This validates the scalar value, not only the binary size. A valid secret key is
+  greater than zero and smaller than the secp256k1 curve order. Returns `false`
+  for wrong-sized binaries and non-binary terms.
+  """
+  @spec valid_seckey?(term()) :: boolean()
+  def valid_seckey?(seckey) when is_seckey(seckey) do
+    Secp256k1.Extrakeys.valid_seckey?(seckey)
+  end
+
+  def valid_seckey?(_seckey), do: false
+
+  @doc """
+  Checks whether a binary encodes a valid secp256k1 public key.
+
+  Accepts x-only (32-byte), compressed (33-byte), and uncompressed (65-byte)
+  public-key encodings. Returns `false` for unsupported encodings, wrong-sized
+  binaries, and non-binary terms.
+  """
+  @spec valid_pubkey?(term()) :: boolean()
+  def valid_pubkey?(pubkey) when is_pubkey(pubkey) do
+    Secp256k1.Extrakeys.valid_pubkey?(pubkey)
+  end
+
+  def valid_pubkey?(_pubkey), do: false
+
+  @doc """
   Derive pubkey from provided seckey
 
   Inputs

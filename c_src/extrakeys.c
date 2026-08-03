@@ -5,6 +5,55 @@
 
 // API
 
+static ERL_NIF_TERM
+valid_seckey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+{
+  (void)argc;
+
+  ErlNifBinary seckey;
+
+  if (!enif_inspect_binary(env, argv[0], &seckey) || seckey.size != 32)
+  {
+    return enif_make_badarg(env);
+  }
+
+  return enif_make_atom(env, secp256k1_ec_seckey_verify(ctx, seckey.data) ? "true" : "false");
+}
+
+static ERL_NIF_TERM
+valid_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+{
+  (void)argc;
+
+  ErlNifBinary input;
+  secp256k1_pubkey pubkey;
+  secp256k1_xonly_pubkey xonly_pubkey;
+  int valid;
+
+  if (!enif_inspect_binary(env, argv[0], &input) ||
+      (input.size != 32 && input.size != 33 && input.size != 65))
+  {
+    return enif_make_badarg(env);
+  }
+
+  if ((input.size == 33 && input.data[0] != 2 && input.data[0] != 3) ||
+      (input.size == 65 && input.data[0] != 4))
+  {
+    return enif_make_atom(env, "false");
+  }
+
+  if (input.size == 32)
+  {
+    valid = secp256k1_xonly_pubkey_parse(ctx, &xonly_pubkey, input.data);
+  }
+  else
+  {
+    valid = secp256k1_ec_pubkey_parse(ctx, &pubkey, input.data, input.size);
+  }
+
+  return enif_make_atom(env, valid ? "true" : "false");
+}
+
 static int
 make_binary(ErlNifEnv *env, const unsigned char *data, size_t size, ERL_NIF_TERM *result)
 {
@@ -337,6 +386,8 @@ xonly_pubkey_tweak_add_check(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]
 }
 
 static ErlNifFunc nif_funcs[] = {
+    {"valid_seckey_nif?", 1, valid_seckey},
+    {"valid_pubkey_nif?", 1, valid_pubkey},
     {"xonly_pubkey_nif", 1, xonly_pubkey},
     {"xonly_pubkey_from_pubkey_nif", 1, xonly_pubkey_from_pubkey},
     {"ec_seckey_tweak_add_nif", 2, ec_seckey_tweak_add},

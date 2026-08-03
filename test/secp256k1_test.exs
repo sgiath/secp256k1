@@ -3,6 +3,8 @@ defmodule Secp256k1Test do
 
   doctest Secp256k1
 
+  @curve_order d("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141")
+
   setup_all do
     {:ok,
      %{
@@ -54,6 +56,34 @@ defmodule Secp256k1Test do
     # x-only
     pubkey = Secp256k1.pubkey(s, :xonly)
     assert pubkey == p
+  end
+
+  test "valid_seckey?/1 validates the secret-key scalar", %{seckey: seckey} do
+    assert Secp256k1.valid_seckey?(seckey)
+    refute Secp256k1.valid_seckey?(<<0::256>>)
+    refute Secp256k1.valid_seckey?(@curve_order)
+    refute Secp256k1.valid_seckey?(<<1>>)
+    refute Secp256k1.valid_seckey?(:not_a_key)
+  end
+
+  test "valid_pubkey?/1 validates every supported public-key encoding", %{seckey: seckey} do
+    xonly_pubkey = Secp256k1.pubkey(seckey, :xonly)
+    compressed_pubkey = Secp256k1.pubkey(seckey, :compressed)
+    uncompressed_pubkey = Secp256k1.pubkey(seckey, :uncompressed)
+    invalid_xonly_pubkey = :binary.copy(<<255>>, 32)
+    <<_prefix, coordinates::binary>> = Secp256k1.pubkey(<<1::256>>, :uncompressed)
+    hybrid_pubkey = <<6, coordinates::binary>>
+
+    assert Secp256k1.valid_pubkey?(xonly_pubkey)
+    assert Secp256k1.valid_pubkey?(compressed_pubkey)
+    assert Secp256k1.valid_pubkey?(uncompressed_pubkey)
+
+    refute Secp256k1.valid_pubkey?(invalid_xonly_pubkey)
+    refute Secp256k1.valid_pubkey?(<<0::264>>)
+    refute Secp256k1.valid_pubkey?(<<0::520>>)
+    refute Secp256k1.valid_pubkey?(hybrid_pubkey)
+    refute Secp256k1.valid_pubkey?(<<1>>)
+    refute Secp256k1.valid_pubkey?(:not_a_key)
   end
 
   test "convert_pubkey/2 converts a received compressed public key to x-only", %{

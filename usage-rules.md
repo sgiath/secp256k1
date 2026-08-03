@@ -30,6 +30,10 @@ pubkey = Secp256k1.pubkey(seckey, :compressed)
 
 # Convert a received compressed pubkey without its seckey
 xonly_pubkey = Secp256k1.convert_pubkey(pubkey, :xonly)
+
+# Validate externally received keys, including their cryptographic encoding
+true = Secp256k1.valid_seckey?(seckey)
+true = Secp256k1.valid_pubkey?(pubkey)
 ```
 
 ### Key Tweaks (BIP-32 and Taproot)
@@ -71,7 +75,7 @@ true = Secp256k1.schnorr_valid?(signature, msg_hash, xonly_pubkey)  # x-only pub
 - **Use secp256k1 pubkeys for ECDSA**: `ecdsa_valid?/3` accepts 33-byte compressed or 65-byte uncompressed pubkeys.
 - **Use x-only pubkeys for Schnorr**: `schnorr_valid?/3` expects 32-byte x-only pubkeys.
 - **Generate fresh keypairs securely**: `Secp256k1.keypair/1` uses `:crypto.strong_rand_bytes/1`.
-- **Validate inputs early**: Check binary sizes before passing to library functions.
+- **Validate inputs early**: Use `valid_seckey?/1` and `valid_pubkey?/1` for externally received keys.
 - **Keep x-only output parity**: Taproot tweak verification requires both the output key and parity.
 
 ### DON'T
@@ -86,12 +90,16 @@ true = Secp256k1.schnorr_valid?(signature, msg_hash, xonly_pubkey)  # x-only pub
 ## Error Handling
 
 ```elixir
-# Stable APIs raise FunctionClauseError for invalid-sized binary inputs
+# Stable operations raise FunctionClauseError for invalid-sized binary inputs
 try do
   Secp256k1.ecdsa_sign(<<1, 2, 3>>, seckey)  # msg_hash too short
 rescue
   FunctionClauseError -> # handle invalid size
 end
+
+# Key validation predicates always return a boolean
+false = Secp256k1.valid_seckey?(<<1, 2, 3>>)
+false = Secp256k1.valid_pubkey?(:not_a_key)
 
 # MuSig functions return {:error, reason} tuples
 case Secp256k1.MuSig.pubkey_agg(pubkeys) do
@@ -102,13 +110,14 @@ end
 
 ## Common Mistakes
 
-| Mistake                 | Problem                               | Fix                                                        |
-| ----------------------- | ------------------------------------- | ---------------------------------------------------------- |
-| Signing raw message     | Library expects 32-byte hash          | Use `:crypto.hash(:sha256, msg)` first                     |
-| Wrong pubkey type       | ECDSA/Schnorr use different formats   | ECDSA: `:compressed` or `:uncompressed`, Schnorr: `:xonly` |
-| Reusing MuSig nonces    | Leaks secret key                      | Always call `nonce_gen/5` fresh                            |
-| Invalid binary size     | Stable APIs raise FunctionClauseError | Use documented sizes: seckey=32, hash=32, etc.             |
-| Forgetting to aggregate | MuSig requires full protocol          | Follow all 6 steps in MuSig guide                          |
+| Mistake                 | Problem                                | Fix                                                        |
+| ----------------------- | -------------------------------------- | ---------------------------------------------------------- |
+| Signing raw message     | Library expects 32-byte hash           | Use `:crypto.hash(:sha256, msg)` first                     |
+| Wrong pubkey type       | ECDSA/Schnorr use different formats    | ECDSA: `:compressed` or `:uncompressed`, Schnorr: `:xonly` |
+| Reusing MuSig nonces    | Leaks secret key                       | Always call `nonce_gen/5` fresh                            |
+| Invalid binary size     | Operations raise `FunctionClauseError` | Use documented sizes; key predicates return `false`        |
+| Invalid key encoding    | Correct size does not imply validity   | Use `valid_seckey?/1` or `valid_pubkey?/1` before use      |
+| Forgetting to aggregate | MuSig requires full protocol           | Follow all 6 steps in MuSig guide                          |
 
 ## MuSig2 Protocol (Summary)
 
@@ -138,6 +147,7 @@ Secp256k1.schnorr_valid?(final_sig, msg, agg_pubkey)
 ## Security Checklist
 
 - [ ] Secret keys generated from secure random source
+- [ ] Externally received keys validated before use
 - [ ] Secret keys never logged or exposed
 - [ ] Messages hashed before signing
 - [ ] MuSig nonces never reused

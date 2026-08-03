@@ -15,6 +15,7 @@ Elixir NIF bindings for the [bitcoin-core/secp256k1](https://github.com/bitcoin-
 ## Features
 
 - **Keypair generation** - secure random secret keys with compressed, uncompressed, or x-only public keys
+- **Key validation** - validate externally received secret and public keys before use
 - **Key tweaks** - BIP-32-style full-key derivation and x-only Taproot commitments
 - **ECDSA signatures** - sign and verify using the traditional Bitcoin signature scheme
 - **Schnorr signatures** - BIP-340 compatible, used in Taproot and Nostr
@@ -67,6 +68,10 @@ pubkey = Secp256k1.pubkey(seckey, :compressed)
 
 # Convert a received compressed pubkey without owning its secret key
 xonly_pubkey = Secp256k1.convert_pubkey(pubkey, :xonly)
+
+# Validate externally received key material
+true = Secp256k1.valid_seckey?(seckey)
+true = Secp256k1.valid_pubkey?(pubkey)
 ```
 
 ### Derive Tweaked Keys

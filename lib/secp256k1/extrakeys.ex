@@ -6,6 +6,18 @@ defmodule Secp256k1.Extrakeys do
   import Secp256k1.Guards
 
   @doc """
+  Checks whether a 32-byte binary is a valid secp256k1 secret-key scalar.
+  """
+  @spec valid_seckey?(Secp256k1.seckey()) :: boolean()
+  def valid_seckey?(seckey) when is_seckey(seckey), do: valid_seckey_nif?(seckey)
+
+  @doc """
+  Checks whether an x-only, compressed, or uncompressed public key can be parsed.
+  """
+  @spec valid_pubkey?(Secp256k1.pubkey()) :: boolean()
+  def valid_pubkey?(pubkey) when is_pubkey(pubkey), do: valid_pubkey_nif?(pubkey)
+
+  @doc """
   Derives or converts an x-only public key.
 
   A 32-byte secret key derives its x-only public key. A 33-byte compressed public
@@ -100,6 +112,12 @@ defmodule Secp256k1.Extrakeys do
       when is_xonly_pubkey(tweaked_pubkey) and parity in [0, 1] and
              is_xonly_pubkey(internal_pubkey) and is_tweak(tweak),
       do: xonly_pubkey_tweak_add_check_nif(tweaked_pubkey, parity, internal_pubkey, tweak)
+
+  @doc false
+  def valid_seckey_nif?(_seckey), do: :erlang.nif_error({:error, :not_loaded})
+
+  @doc false
+  def valid_pubkey_nif?(_pubkey), do: :erlang.nif_error({:error, :not_loaded})
 
   @doc false
   def xonly_pubkey_nif(_seckey), do: :erlang.nif_error({:error, :not_loaded})
