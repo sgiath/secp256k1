@@ -4,6 +4,7 @@
   packages = with pkgs; [
     git
     autoreconfHook
+    prettier
   ];
 
   languages = {
