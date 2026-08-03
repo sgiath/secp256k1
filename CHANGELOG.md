@@ -1,6 +1,6 @@
 # Changelog
 
-## unreleased
+## v0.8.0 (2026-08-03)
 
 - Ship the upstream libsecp256k1 source as a vendored tarball so user builds no longer need git or autotools
 - Convert ECDSA signatures between compact and strict DER encodings and normalize high-S signatures for interoperability
