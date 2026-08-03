@@ -1,5 +1,9 @@
 # Changelog
 
+## unreleased
+
+- Fix cross-compilation by applying macOS linker flags only to native builds and passing the target host triplet to Autotools ([#2](https://github.com/sgiath/secp256k1/pull/2), thanks [Kentaro Kuribayashi (@kentaro)](https://github.com/kentaro))
+
 ## v0.7.2 (2026-06-04)
 
 - Fix Elixir 1.20 type violations
