@@ -1,9 +1,10 @@
 defmodule Secp256k1Test.Schnorr do
+  @moduledoc false
   use Secp256k1Test.Case, async: true
 
   alias Secp256k1.Schnorr
 
-  doctest Secp256k1.Schnorr
+  doctest Schnorr
 
   setup_all do
     {:ok,

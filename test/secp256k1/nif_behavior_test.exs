@@ -1,4 +1,5 @@
 defmodule Secp256k1Test.NifBehavior do
+  @moduledoc false
   use Secp256k1Test.Case, async: true
 
   alias Secp256k1.ECDH
@@ -114,10 +115,13 @@ defmodule Secp256k1Test.NifBehavior do
       end
     ]
 
-    results =
+    for_result =
       for iteration <- 1..50, {feature, operation} <- feature_operations do
         {iteration, feature, operation}
       end
+
+    results =
+      for_result
       |> Task.async_stream(
         fn {iteration, feature, operation} ->
           message = :crypto.hash(:sha256, Integer.to_string(iteration))

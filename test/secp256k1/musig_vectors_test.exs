@@ -1,4 +1,5 @@
 defmodule Secp256k1Test.MuSigVectors do
+  @moduledoc false
   use Secp256k1Test.Case, async: true
 
   alias Secp256k1.MuSig

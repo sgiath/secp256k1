@@ -1,4 +1,5 @@
 defmodule Secp256k1Test.NifLifecycle do
+  @moduledoc false
   use Secp256k1Test.Case, async: false
 
   alias Secp256k1.ECDSA

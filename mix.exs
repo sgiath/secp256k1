@@ -23,7 +23,7 @@ defmodule Secp256k1.MixProject do
 
       # Docs
       name: "secp256k1",
-      source_url: "https://github.com/Sgiath/secp256k1",
+      source_url: "https://github.com/sgiath/secp256k1",
       homepage_url: "https://sgiath.dev/libraries#secp256k1",
       description: """
       Library wrapping around secp256k1 Bitcoin library
@@ -50,6 +50,7 @@ defmodule Secp256k1.MixProject do
       # Development
       {:ex_check, "~> 0.16", only: [:dev], runtime: false},
       {:credo, "~> 1.7", only: [:dev], runtime: false},
+      {:styler, "~> 1.12", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.40", only: [:dev], runtime: false},
       {:mix_audit, "~> 2.1", only: [:dev], runtime: false},
       {:mix_test_watch, "~> 1.4", only: [:dev], runtime: false}
@@ -59,13 +60,12 @@ defmodule Secp256k1.MixProject do
   defp package do
     [
       name: "lib_secp256k1",
-      maintainers: ["Sgiath <secp256k1@sgiath.dev>"],
-      files:
-        ~w(lib LICENSE mix.exs README* CHANGELOG* c_src/*.[ch] c_src/*.tar.gz Makefile usage-rules.md),
+      maintainers: ["sgiath <secp256k1@sgiath.dev>"],
+      files: ~w(lib LICENSE mix.exs README* CHANGELOG* c_src/*.[ch] c_src/*.tar.gz Makefile usage-rules.md docs/*),
       licenses: ["WTFPL", "MIT"],
       links: %{
         "C library" => "https://github.com/bitcoin-core/secp256k1",
-        "GitHub" => "https://github.com/Sgiath/secp256k1"
+        "GitHub" => "https://github.com/sgiath/secp256k1"
       }
     ]
   end
@@ -84,7 +84,7 @@ defmodule Secp256k1.MixProject do
       ],
       formatters: ["html"],
       source_ref: "v#{@version}",
-      source_url: "https://github.com/Sgiath/secp256k1",
+      source_url: "https://github.com/sgiath/secp256k1",
       groups_for_modules: groups_for_modules()
     ]
   end

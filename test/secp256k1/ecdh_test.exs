@@ -1,29 +1,27 @@
 defmodule Secp256k1Test.ECDH do
+  @moduledoc false
   use Secp256k1Test.Case, async: true
 
   alias Secp256k1.ECDH
 
-  doctest Secp256k1.ECDH
+  doctest ECDH
 
   setup_all do
     {:ok,
      %{
        alice_seckey: d("0000000000000000000000000000000000000000000000000000000000000001"),
        bob_seckey: d("0000000000000000000000000000000000000000000000000000000000000002"),
-       alice_pubkey_compressed:
-         d("0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"),
+       alice_pubkey_compressed: d("0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"),
        alice_pubkey_uncompressed:
          d(
            "0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8"
          ),
-       bob_pubkey_compressed:
-         d("02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"),
+       bob_pubkey_compressed: d("02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"),
        bob_pubkey_uncompressed:
          d(
            "04c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee51ae168fea63dc339a3c58419466ceaeef7f632653266d0e1236431a950cfe52a"
          ),
-       libsecp_shared_secret:
-         d("b1c9938f01121e159887ac2c8d393a22e4476ff8212de13fe1939de2a236f0a7"),
+       libsecp_shared_secret: d("b1c9938f01121e159887ac2c8d393a22e4476ff8212de13fe1939de2a236f0a7"),
        raw_shared_secret: d("c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5")
      }}
   end

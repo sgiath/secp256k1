@@ -36,8 +36,7 @@ defmodule Secp256k1.Extrakeys do
           Secp256k1.xonly_pubkey() | {:error, binary() | :allocation_failed}
   def xonly_pubkey(seckey) when is_seckey(seckey), do: Secp256k1.NIF.xonly_pubkey(seckey)
 
-  def xonly_pubkey(pubkey) when is_compressed_pubkey(pubkey),
-    do: Secp256k1.NIF.xonly_pubkey_from_pubkey(pubkey)
+  def xonly_pubkey(pubkey) when is_compressed_pubkey(pubkey), do: Secp256k1.NIF.xonly_pubkey_from_pubkey(pubkey)
 
   @doc """
   Adds a scalar tweak to a secret key.
@@ -66,8 +65,7 @@ defmodule Secp256k1.Extrakeys do
           | Secp256k1.uncompressed_pubkey()
           | {:error, binary() | :allocation_failed}
   def ec_pubkey_tweak_add(pubkey, tweak)
-      when (is_compressed_pubkey(pubkey) or is_uncompressed_pubkey(pubkey)) and
-             is_tweak(tweak),
+      when (is_compressed_pubkey(pubkey) or is_uncompressed_pubkey(pubkey)) and is_tweak(tweak),
       do: Secp256k1.NIF.ec_pubkey_tweak_add(pubkey, tweak)
 
   @doc """
@@ -78,9 +76,8 @@ defmodule Secp256k1.Extrakeys do
   """
   @spec xonly_seckey_tweak_add(Secp256k1.seckey(), Secp256k1.tweak()) ::
           Secp256k1.seckey() | {:error, binary() | :allocation_failed}
-  def xonly_seckey_tweak_add(seckey, tweak)
-      when is_seckey(seckey) and is_tweak(tweak),
-      do: Secp256k1.NIF.xonly_seckey_tweak_add(seckey, tweak)
+  def xonly_seckey_tweak_add(seckey, tweak) when is_seckey(seckey) and is_tweak(tweak),
+    do: Secp256k1.NIF.xonly_seckey_tweak_add(seckey, tweak)
 
   @doc """
   Adds a scalar tweak to an x-only public key.
@@ -92,9 +89,8 @@ defmodule Secp256k1.Extrakeys do
   @spec xonly_pubkey_tweak_add(Secp256k1.xonly_pubkey(), Secp256k1.tweak()) ::
           {:ok, Secp256k1.xonly_pubkey(), Secp256k1.pubkey_parity()}
           | {:error, binary() | :allocation_failed}
-  def xonly_pubkey_tweak_add(internal_pubkey, tweak)
-      when is_xonly_pubkey(internal_pubkey) and is_tweak(tweak),
-      do: Secp256k1.NIF.xonly_pubkey_tweak_add(internal_pubkey, tweak)
+  def xonly_pubkey_tweak_add(internal_pubkey, tweak) when is_xonly_pubkey(internal_pubkey) and is_tweak(tweak),
+    do: Secp256k1.NIF.xonly_pubkey_tweak_add(internal_pubkey, tweak)
 
   @doc """
   Checks an x-only public-key tweak result, including its parity.
@@ -109,13 +105,6 @@ defmodule Secp256k1.Extrakeys do
           Secp256k1.tweak()
         ) :: boolean()
   def xonly_pubkey_tweak_add_check(tweaked_pubkey, parity, internal_pubkey, tweak)
-      when is_xonly_pubkey(tweaked_pubkey) and parity in [0, 1] and
-             is_xonly_pubkey(internal_pubkey) and is_tweak(tweak),
-      do:
-        Secp256k1.NIF.xonly_pubkey_tweak_add_check(
-          tweaked_pubkey,
-          parity,
-          internal_pubkey,
-          tweak
-        )
+      when is_xonly_pubkey(tweaked_pubkey) and parity in [0, 1] and is_xonly_pubkey(internal_pubkey) and is_tweak(tweak),
+      do: Secp256k1.NIF.xonly_pubkey_tweak_add_check(tweaked_pubkey, parity, internal_pubkey, tweak)
 end

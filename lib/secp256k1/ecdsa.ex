@@ -33,31 +33,27 @@ defmodule Secp256k1.ECDSA do
   Derive compressed pubkey from seckey
   """
   @spec compressed_pubkey(seckey :: Secp256k1.seckey()) :: Secp256k1.compressed_pubkey()
-  def compressed_pubkey(seckey) when is_seckey(seckey),
-    do: Secp256k1.NIF.ecdsa_compressed_pubkey(seckey)
+  def compressed_pubkey(seckey) when is_seckey(seckey), do: Secp256k1.NIF.ecdsa_compressed_pubkey(seckey)
 
   @doc """
   Derive uncompressed pubkey from seckey
   """
   @spec uncompressed_pubkey(seckey :: Secp256k1.seckey()) :: Secp256k1.uncompressed_pubkey()
-  def uncompressed_pubkey(seckey) when is_seckey(seckey),
-    do: Secp256k1.NIF.ecdsa_uncompressed_pubkey(seckey)
+  def uncompressed_pubkey(seckey) when is_seckey(seckey), do: Secp256k1.NIF.ecdsa_uncompressed_pubkey(seckey)
 
   @doc """
   Convert uncompressed pubkey to compressed one
   """
   @spec compress_pubkey(pubkey :: Secp256k1.uncompressed_pubkey()) ::
           Secp256k1.compressed_pubkey()
-  def compress_pubkey(pubkey) when is_uncompressed_pubkey(pubkey),
-    do: Secp256k1.NIF.ecdsa_compress_pubkey(pubkey)
+  def compress_pubkey(pubkey) when is_uncompressed_pubkey(pubkey), do: Secp256k1.NIF.ecdsa_compress_pubkey(pubkey)
 
   @doc """
   Convert compressed pubkey to uncompressed one
   """
   @spec decompress_pubkey(pubkey :: Secp256k1.compressed_pubkey()) ::
           Secp256k1.uncompressed_pubkey()
-  def decompress_pubkey(pubkey) when is_compressed_pubkey(pubkey),
-    do: Secp256k1.NIF.ecdsa_decompress_pubkey(pubkey)
+  def decompress_pubkey(pubkey) when is_compressed_pubkey(pubkey), do: Secp256k1.NIF.ecdsa_decompress_pubkey(pubkey)
 
   @doc """
   Generate an ECDSA signature of a message hash with random RFC 6979 additional data.
@@ -93,8 +89,7 @@ defmodule Secp256k1.ECDSA do
           nonce_data :: nil | <<_::256>>
         ) :: Secp256k1.ecdsa_sig()
   def sign(msg_hash, seckey, nonce_data)
-      when is_hash(msg_hash) and is_seckey(seckey) and
-             (is_nil(nonce_data) or is_bin_size(nonce_data, 32)) do
+      when is_hash(msg_hash) and is_seckey(seckey) and (is_nil(nonce_data) or is_bin_size(nonce_data, 32)) do
     Secp256k1.NIF.ecdsa_sign(msg_hash, seckey, nonce_data)
   end
 
@@ -106,8 +101,7 @@ defmodule Secp256k1.ECDSA do
   """
   @spec serialize_der(signature :: Secp256k1.ecdsa_sig()) ::
           Secp256k1.ecdsa_der_sig() | {:error, binary() | :allocation_failed}
-  def serialize_der(signature) when is_ecdsa_sig(signature),
-    do: Secp256k1.NIF.ecdsa_serialize_der(signature)
+  def serialize_der(signature) when is_ecdsa_sig(signature), do: Secp256k1.NIF.ecdsa_serialize_der(signature)
 
   @doc """
   Parses a standard-sized strict DER ECDSA signature into compact 64-byte `r || s` form.
@@ -120,8 +114,7 @@ defmodule Secp256k1.ECDSA do
   """
   @spec parse_der(signature :: Secp256k1.ecdsa_der_sig()) ::
           Secp256k1.ecdsa_sig() | {:error, binary() | :allocation_failed}
-  def parse_der(signature)
-      when is_binary(signature) and byte_size(signature) >= 8 and byte_size(signature) <= 72 do
+  def parse_der(signature) when is_binary(signature) and byte_size(signature) >= 8 and byte_size(signature) <= 72 do
     Secp256k1.NIF.ecdsa_parse_der(signature)
   end
 
@@ -136,8 +129,7 @@ defmodule Secp256k1.ECDSA do
   """
   @spec normalize(signature :: Secp256k1.ecdsa_sig()) ::
           Secp256k1.ecdsa_sig() | {:error, binary() | :allocation_failed}
-  def normalize(signature) when is_ecdsa_sig(signature),
-    do: Secp256k1.NIF.ecdsa_normalize(signature)
+  def normalize(signature) when is_ecdsa_sig(signature), do: Secp256k1.NIF.ecdsa_normalize(signature)
 
   @doc """
   Check if ECDSA signature is valid.

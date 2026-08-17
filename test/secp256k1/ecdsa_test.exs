@@ -1,9 +1,10 @@
 defmodule Secp256k1Test.ECDSA do
+  @moduledoc false
   use Secp256k1Test.Case, async: true
 
   alias Secp256k1.ECDSA
 
-  doctest Secp256k1.ECDSA
+  doctest ECDSA
 
   @curve_order 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
 

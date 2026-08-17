@@ -1,4 +1,5 @@
 defmodule Secp256k1Test.SchnorrBIP340 do
+  @moduledoc false
   use Secp256k1Test.Case, async: true
 
   alias Secp256k1.Extrakeys

@@ -24,9 +24,7 @@ defmodule Secp256k1.ECDH do
           seckey :: Secp256k1.seckey(),
           pubkey :: Secp256k1.compressed_pubkey() | Secp256k1.uncompressed_pubkey()
         ) :: Secp256k1.shared_secret()
-  def ecdh(seckey, pubkey)
-      when is_seckey(seckey) and
-             (is_compressed_pubkey(pubkey) or is_uncompressed_pubkey(pubkey)) do
+  def ecdh(seckey, pubkey) when is_seckey(seckey) and (is_compressed_pubkey(pubkey) or is_uncompressed_pubkey(pubkey)) do
     Secp256k1.NIF.ecdh(seckey, pubkey)
   end
 end
