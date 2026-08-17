@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/sgiath/secp256k1/master/docs/header.svg" alt="secp256k1 - the curve with chord-and-tangent point addition, R = P + Q"/>
+  <img src="https://raw.githubusercontent.com/sgiath/secp256k1/master/priv/header.svg" alt="secp256k1 - the curve with chord-and-tangent point addition, R = P + Q"/>
 </p>
 
 # Secp256k1
