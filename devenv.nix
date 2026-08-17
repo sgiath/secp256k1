@@ -1,5 +1,10 @@
 { pkgs, inputs, ... }:
-
+let
+  beamPackages = pkgs.beamMinimal29Packages;
+  expert = inputs.expert.packages.${pkgs.stdenv.system}.default.override {
+    inherit beamPackages;
+  };
+in
 {
   packages = with pkgs; [
     git
@@ -10,9 +15,16 @@
 
   languages = {
     c.enable = true;
+    nix.enable = true;
+    shell.enable = true;
+
     elixir = {
       enable = true;
-      package = pkgs.beamMinimal29Packages.elixir_1_20;
+      package = beamPackages.elixir_1_20;
+      lsp = {
+        enable = true;
+        package = expert;
+      };
     };
   };
 

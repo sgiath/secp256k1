@@ -1,44 +1,37 @@
 # Usage Guide
 
+```elixir
+Mix.install([
+  {:lib_secp256k1, "~> 0.8", path: "./"}
+])
+```
+
+## Introduction
+
 This guide covers the basic usage of the `lib_secp256k1` library for Elixir.
+See the [README](https://github.com/Sgiath/secp256k1#installation) for
+installation instructions; the setup cell above installs the library for this
+notebook.
 
-> #### Scope {: .info}
->
-> `lib_secp256k1` wraps the upstream libsecp256k1 C library. Use Erlang's
-> `:crypto` module for generic hashing, random bytes, generic ECDSA, and raw
-> ECDH. Use this library when you need libsecp256k1-specific key formats,
-> signatures, Schnorr, MuSig2, or the libsecp256k1 ECDH output contract.
+> **Scope:** `lib_secp256k1` wraps the upstream libsecp256k1 C library. Use
+> Erlang's `:crypto` module for generic hashing, random bytes, generic ECDSA,
+> and raw ECDH. Use this library when you need libsecp256k1-specific key
+> formats, signatures, Schnorr, MuSig2, or the libsecp256k1 ECDH output
+> contract.
 
-## Installation
-
-### System Dependencies
-
-The package includes the upstream libsecp256k1 source as a vendored tarball with a pre-generated configure script. Users need `make`, a C compiler, and standard Unix tools `tar` plus either `sha256sum` or `shasum`, which are present in standard Unix userland. No network, git, autoconf, automake, or libtool is required to compile the package.
-
-**macOS**
-
-Install Xcode Command Line Tools:
-
-```bash
-xcode-select --install
-```
-
-**Linux (Ubuntu/Debian)**
-
-```bash
-sudo apt-get install build-essential
-```
-
-### Elixir Dependency
-
-Add `lib_secp256k1` to your dependencies in `mix.exs`:
+Keys and signatures in this library are raw binaries. There is no single
+official string encoding, but lowercase hex is the de-facto convention for raw
+key and signature bytes — BIP test vectors and Bitcoin Core RPC use it, and
+Nostr uses it as its canonical key format. Protocols layer their own encodings
+on top: WIF (Base58Check) encodes Bitcoin private keys, Nostr's bech32
+`npub`/`nsec` encode public/secret keys, and `bc1p` bech32m strings are
+addresses derived from keys. Base64 works for arbitrary bytes but is not
+conventional in this ecosystem. The helper below is used throughout this
+notebook to display binaries; parse incoming hex with
+`Base.decode16!(string, case: :lower)`.
 
 ```elixir
-def deps do
-  [
-    {:lib_secp256k1, "~> 0.8"}
-  ]
-end
+hex = &Base.encode16(&1, case: :lower)
 ```
 
 ## Keypair Generation
@@ -53,11 +46,21 @@ You can generate a new random keypair with a specified public key format (`:comp
 # Generate a keypair with a compressed public key (33 bytes)
 {seckey, pubkey} = Secp256k1.keypair(:compressed)
 
-# Generate a keypair with an uncompressed public key (65 bytes)
-{seckey, pubkey_uncompressed} = Secp256k1.keypair(:uncompressed)
+%{seckey: hex.(seckey), pubkey: hex.(pubkey)}
+```
 
+```elixir
+# Generate a keypair with an uncompressed public key (65 bytes)
+{_seckey, pubkey_uncompressed} = Secp256k1.keypair(:uncompressed)
+
+hex.(pubkey_uncompressed)
+```
+
+```elixir
 # Generate a keypair with an x-only public key (32 bytes, used for Schnorr/Taproot)
-{seckey, xonly_pubkey} = Secp256k1.keypair(:xonly)
+{_seckey, pubkey_xonly} = Secp256k1.keypair(:xonly)
+
+hex.(pubkey_xonly)
 ```
 
 ### Deriving a Public Key
@@ -65,20 +68,22 @@ You can generate a new random keypair with a specified public key format (`:comp
 If you already have a secret key (32 bytes), you can derive the public key from it.
 
 ```elixir
-seckey = <<0x1234...::256>> # Your 32-byte secret key
+# Derive the compressed public key, matching the one generated above
+Secp256k1.pubkey(seckey, :compressed) == pubkey
+```
 
-# Derive compressed public key
-pubkey = Secp256k1.pubkey(seckey, :compressed)
-
+```elixir
 # Derive x-only public key
 xonly_pubkey = Secp256k1.pubkey(seckey, :xonly)
+
+hex.(xonly_pubkey)
 ```
 
 If you receive a compressed public key but do not own its secret key, convert it
 directly to the 32-byte x-only format:
 
 ```elixir
-xonly_pubkey = Secp256k1.convert_pubkey(compressed_pubkey, :xonly)
+Secp256k1.convert_pubkey(pubkey, :xonly) == xonly_pubkey
 ```
 
 The conversion removes the compressed key's parity prefix and does not require
@@ -99,7 +104,6 @@ tweaked_seckey = Secp256k1.ec_seckey_tweak_add(seckey, tweak)
 tweaked_pubkey = Secp256k1.ec_pubkey_tweak_add(compressed_pubkey, tweak)
 
 Secp256k1.pubkey(tweaked_seckey, :compressed) == tweaked_pubkey
-# => true
 ```
 
 For Taproot, tweak the even-Y x-only internal key. Public tweaking returns the output
@@ -115,7 +119,6 @@ true =
 
 output_seckey = Secp256k1.xonly_seckey_tweak_add(seckey, tweak)
 Secp256k1.pubkey(output_seckey, :xonly) == output_pubkey
-# => true
 ```
 
 All tweaks are 32-byte big-endian scalars. Zero is valid; values at or above the
@@ -131,10 +134,9 @@ ECDSA is the traditional signature scheme used in Bitcoin and other cryptocurren
 
 To sign a message, you first need to hash it (typically using SHA-256).
 
-> #### Hashing belongs to `:crypto` {: .tip}
->
-> Hashing is intentionally done with Erlang's built-in `:crypto` module. This
-> library does not reimplement generic hashing APIs.
+> **Hashing belongs to `:crypto`:** hashing is intentionally done with Erlang's
+> built-in `:crypto` module. This library does not reimplement generic hashing
+> APIs.
 
 ```elixir
 # 1. Prepare the message hash
@@ -144,6 +146,8 @@ msg_hash = :crypto.hash(:sha256, message)
 # 2. Sign the hash with your secret key
 # Returns a 64-byte compact signature
 signature = Secp256k1.ecdsa_sign(msg_hash, seckey)
+
+hex.(signature)
 ```
 
 ### Verifying a Signature
@@ -152,8 +156,7 @@ To verify a signature, you need the signature, the message hash, and the public 
 
 ```elixir
 # Verify the signature
-is_valid = Secp256k1.ecdsa_valid?(signature, msg_hash, pubkey)
-# => true
+Secp256k1.ecdsa_valid?(signature, msg_hash, pubkey)
 ```
 
 ### DER Wire Signatures and Low-S Normalization
@@ -164,6 +167,8 @@ strict DER signatures at protocol boundaries:
 ```elixir
 der_signature = Secp256k1.ecdsa_signature_serialize_der(signature)
 compact_signature = Secp256k1.ecdsa_signature_parse_der(der_signature)
+
+hex.(der_signature)
 ```
 
 Bitcoin transaction signatures append a sighash byte after the DER signature. Remove
@@ -175,17 +180,15 @@ accepts the mathematically equivalent high-S form:
 
 ```elixir
 compact_signature = Secp256k1.ecdsa_signature_normalize(compact_signature)
-is_valid = Secp256k1.ecdsa_valid?(compact_signature, msg_hash, pubkey)
+Secp256k1.ecdsa_valid?(compact_signature, msg_hash, pubkey)
 ```
 
 Normalization accepts a malleable alternate signature. Use the normalized bytes for
 all subsequent identity, hashing, storage, and transmission operations.
 
-> #### ECDSA and `:crypto` {: .info}
->
-> Erlang's `:crypto` module also provides generic ECDSA through
-> `:crypto.sign/4` and `:crypto.verify/5`. Use that API when you want digest
-> selection through the standard Erlang/OpenSSL interface.
+> **ECDSA and `:crypto`:** Erlang's `:crypto` module also provides generic
+> ECDSA through `:crypto.sign/4` and `:crypto.verify/5`. Use that API when you
+> want digest selection through the standard Erlang/OpenSSL interface.
 >
 > Use `Secp256k1.ecdsa_sign/2` and `Secp256k1.ecdsa_valid?/3` when you want the
 > libsecp256k1/Bitcoin-oriented contract:
@@ -206,6 +209,8 @@ Schnorr signatures can sign a 32-byte hash or an arbitrary length message.
 # Signing a hash (recommended for Bitcoin)
 msg_hash = :crypto.hash(:sha256, "Hello Schnorr")
 signature = Secp256k1.schnorr_sign(msg_hash, seckey)
+
+hex.(signature)
 ```
 
 ### Verifying a Signature
@@ -217,8 +222,7 @@ Verification requires the signature, the original message (or hash), and the x-o
 xonly_pubkey = Secp256k1.pubkey(seckey, :xonly)
 
 # Verify
-is_valid = Secp256k1.schnorr_valid?(signature, msg_hash, xonly_pubkey)
-# => true
+Secp256k1.schnorr_valid?(signature, msg_hash, xonly_pubkey)
 ```
 
 ## ECDH Shared Secrets
@@ -232,15 +236,15 @@ public key, and returns a 32-byte binary.
 {_bob_seckey, bob_pubkey} = Secp256k1.keypair(:compressed)
 
 shared_secret = Secp256k1.ecdh(alice_seckey, bob_pubkey)
-# => <<_::256>>
+
+hex.(shared_secret)
 ```
 
-> #### ECDH and `:crypto` {: .info}
->
-> This is not raw generic ECDH. It wraps the upstream C library behavior,
-> currently SHA256 over the compressed shared point. This output intentionally
-> differs from Erlang/OpenSSL raw ECDH. If you need raw ECDH instead, call:
+> **ECDH and `:crypto`:** this is not raw generic ECDH. It wraps the upstream
+> C library behavior, currently SHA256 over the compressed shared point. This
+> output intentionally differs from Erlang/OpenSSL raw ECDH. If you need raw
+> ECDH instead, call:
 
 ```elixir
-:crypto.compute_key(:ecdh, other_pubkey, my_private_key, :secp256k1)
+:crypto.compute_key(:ecdh, bob_pubkey, alice_seckey, :secp256k1)
 ```
