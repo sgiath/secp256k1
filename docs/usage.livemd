@@ -1,15 +1,21 @@
 # Usage Guide
 
 ```elixir
-Mix.install([
-  {:lib_secp256k1, "~> 0.8", path: "./"}
-])
+# Use the local checkout when the notebook runs from this repo, Hex otherwise
+lib_secp256k1 =
+  if File.exists?(Path.expand("../mix.exs", __DIR__)) do
+    {:lib_secp256k1, path: Path.expand("..", __DIR__)}
+  else
+    {:lib_secp256k1, "~> 0.8"}
+  end
+
+Mix.install([lib_secp256k1])
 ```
 
 ## Introduction
 
 This guide covers the basic usage of the `lib_secp256k1` library for Elixir.
-See the [README](https://github.com/Sgiath/secp256k1#installation) for
+See the [README](https://github.com/sgiath/secp256k1#installation) for
 installation instructions; the setup cell above installs the library for this
 notebook.
 

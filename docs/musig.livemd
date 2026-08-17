@@ -1,9 +1,15 @@
 # MuSig2 Multi-Signatures
 
 ```elixir
-Mix.install([
-  {:lib_secp256k1, "~> 0.8", path: "."}
-])
+# Use the local checkout when the notebook runs from this repo, Hex otherwise
+lib_secp256k1 =
+  if File.exists?(Path.expand("../mix.exs", __DIR__)) do
+    {:lib_secp256k1, path: Path.expand("..", __DIR__)}
+  else
+    {:lib_secp256k1, "~> 0.8"}
+  end
+
+Mix.install([lib_secp256k1])
 ```
 
 ## Introduction

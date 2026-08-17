@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/sgiath/secp256k1/master/docs/header.svg" alt="secp256k1 - the curve with chord-and-tangent point addition, R = P + Q"/>
+</p>
+
 # Secp256k1
 
 [![Hex.pm](https://img.shields.io/hexpm/v/lib_secp256k1.svg?style=flat&color=blue)](https://hex.pm/packages/lib_secp256k1)
@@ -59,6 +63,13 @@ end
 - [HexDocs](https://lib-secp256k1.hexdocs.pm/) - API reference
 - [Usage Guide](https://lib-secp256k1.hexdocs.pm/usage.html) - detailed examples, also runnable as a [Livebook](docs/usage.livemd)
 - [MuSig Guide](https://lib-secp256k1.hexdocs.pm/musig.html) - multi-signature protocol walkthrough, also runnable as a [Livebook](docs/musig.livemd)
+
+From a local checkout, run the guides interactively with
+[Livebook](https://livebook.dev):
+
+```bash
+livebook server docs
+```
 
 ## Platform Support
 
