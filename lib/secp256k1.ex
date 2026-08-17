@@ -248,7 +248,8 @@ defmodule Secp256k1 do
   @spec xonly_pubkey_tweak_add(xonly_pubkey(), tweak()) ::
           {:ok, xonly_pubkey(), pubkey_parity()}
           | {:error, binary() | :allocation_failed}
-  def xonly_pubkey_tweak_add(internal_pubkey, tweak) when is_xonly_pubkey(internal_pubkey) and is_tweak(tweak) do
+  def xonly_pubkey_tweak_add(internal_pubkey, tweak)
+      when is_xonly_pubkey(internal_pubkey) and is_tweak(tweak) do
     Secp256k1.Extrakeys.xonly_pubkey_tweak_add(internal_pubkey, tweak)
   end
 
@@ -265,7 +266,8 @@ defmodule Secp256k1 do
           tweak()
         ) :: boolean()
   def xonly_pubkey_tweak_add_check(tweaked_pubkey, parity, internal_pubkey, tweak)
-      when is_xonly_pubkey(tweaked_pubkey) and parity in [0, 1] and is_xonly_pubkey(internal_pubkey) and is_tweak(tweak) do
+      when is_xonly_pubkey(tweaked_pubkey) and parity in [0, 1] and
+             is_xonly_pubkey(internal_pubkey) and is_tweak(tweak) do
     Secp256k1.Extrakeys.xonly_pubkey_tweak_add_check(
       tweaked_pubkey,
       parity,
@@ -294,7 +296,8 @@ defmodule Secp256k1 do
   For options see `pubkey/2`
   """
   @spec keypair(seckey :: seckey(), type :: pubkey_type()) :: {seckey(), pubkey()}
-  def keypair(seckey, type) when is_seckey(seckey) and type in [:xonly, :compressed, :uncompressed] do
+  def keypair(seckey, type)
+      when is_seckey(seckey) and type in [:xonly, :compressed, :uncompressed] do
     {seckey, Secp256k1.pubkey(seckey, type)}
   end
 
@@ -314,7 +317,8 @@ defmodule Secp256k1 do
   """
   @spec ecdh(seckey :: seckey(), pubkey :: compressed_pubkey() | uncompressed_pubkey()) ::
           shared_secret()
-  def ecdh(seckey, pubkey) when is_seckey(seckey) and (is_compressed_pubkey(pubkey) or is_uncompressed_pubkey(pubkey)) do
+  def ecdh(seckey, pubkey)
+      when is_seckey(seckey) and (is_compressed_pubkey(pubkey) or is_uncompressed_pubkey(pubkey)) do
     Secp256k1.ECDH.ecdh(seckey, pubkey)
   end
 

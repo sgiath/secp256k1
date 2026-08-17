@@ -59,7 +59,8 @@ defmodule Secp256k1.MuSig do
   """
   @spec pubkey_agg([Secp256k1.pubkey()]) ::
           {:ok, Secp256k1.xonly_pubkey(), keyagg_cache()} | {:error, term()}
-  def pubkey_agg(pubkeys) when is_list(pubkeys) and pubkeys != [], do: Secp256k1.NIF.musig_pubkey_agg(pubkeys)
+  def pubkey_agg(pubkeys) when is_list(pubkeys) and pubkeys != [],
+    do: Secp256k1.NIF.musig_pubkey_agg(pubkeys)
 
   @doc """
   Gets the full public key from the key aggregation cache.
@@ -108,7 +109,8 @@ defmodule Secp256k1.MuSig do
         ) :: {:ok, secnonce(), pubnonce()} | {:error, term()}
   # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   def nonce_gen(seckey, pubkey, msg, cache, extra)
-      when (is_nil(seckey) or is_seckey(seckey)) and (is_compressed_pubkey(pubkey) or is_uncompressed_pubkey(pubkey)) and
+      when (is_nil(seckey) or is_seckey(seckey)) and
+             (is_compressed_pubkey(pubkey) or is_uncompressed_pubkey(pubkey)) and
              (is_nil(msg) or is_hash(msg)) and (is_nil(cache) or is_reference(cache)) and
              (is_nil(extra) or is_bin_size(extra, 32)),
       do: Secp256k1.NIF.musig_nonce_gen(seckey, pubkey, msg, cache, extra)
@@ -117,14 +119,16 @@ defmodule Secp256k1.MuSig do
   Aggregates public nonces from all signers.
   """
   @spec nonce_agg([pubnonce()]) :: aggnonce() | {:error, term()}
-  def nonce_agg(pubnonces) when is_list(pubnonces) and pubnonces != [], do: Secp256k1.NIF.musig_nonce_agg(pubnonces)
+  def nonce_agg(pubnonces) when is_list(pubnonces) and pubnonces != [],
+    do: Secp256k1.NIF.musig_nonce_agg(pubnonces)
 
   @doc """
   Processes the aggregate nonce and creates a signing session.
   """
   @spec nonce_process(aggnonce(), binary(), keyagg_cache()) :: session() | {:error, term()}
-  def nonce_process(aggnonce, msg, cache) when is_bin_size(aggnonce, 66) and is_hash(msg) and is_reference(cache),
-    do: Secp256k1.NIF.musig_nonce_process(aggnonce, msg, cache)
+  def nonce_process(aggnonce, msg, cache)
+      when is_bin_size(aggnonce, 66) and is_hash(msg) and is_reference(cache),
+      do: Secp256k1.NIF.musig_nonce_process(aggnonce, msg, cache)
 
   @doc """
   Creates a partial signature.
@@ -134,7 +138,8 @@ defmodule Secp256k1.MuSig do
   @spec partial_sign(secnonce(), Secp256k1.seckey(), keyagg_cache(), session()) ::
           partial_sig() | {:error, term()}
   def partial_sign(secnonce, seckey, cache, session)
-      when is_reference(secnonce) and is_seckey(seckey) and is_reference(cache) and is_reference(session),
+      when is_reference(secnonce) and is_seckey(seckey) and is_reference(cache) and
+             is_reference(session),
       do: Secp256k1.NIF.musig_partial_sign(secnonce, seckey, cache, session)
 
   @doc """
@@ -149,13 +154,15 @@ defmodule Secp256k1.MuSig do
         ) :: boolean()
   def partial_sig_verify(psig, pubnonce, pubkey, cache, session)
       when is_bin_size(psig, 32) and is_bin_size(pubnonce, 66) and
-             (is_compressed_pubkey(pubkey) or is_uncompressed_pubkey(pubkey)) and is_reference(cache) and
-             is_reference(session), do: Secp256k1.NIF.musig_partial_sig_verify(psig, pubnonce, pubkey, cache, session)
+             (is_compressed_pubkey(pubkey) or is_uncompressed_pubkey(pubkey)) and
+             is_reference(cache) and is_reference(session),
+      do: Secp256k1.NIF.musig_partial_sig_verify(psig, pubnonce, pubkey, cache, session)
 
   @doc """
   Aggregates partial signatures into the final Schnorr signature.
   """
   @spec partial_sig_agg(session(), [partial_sig()]) :: Secp256k1.schnorr_sig() | {:error, term()}
-  def partial_sig_agg(session, partial_sigs) when is_reference(session) and is_list(partial_sigs) and partial_sigs != [],
-    do: Secp256k1.NIF.musig_partial_sig_agg(session, partial_sigs)
+  def partial_sig_agg(session, partial_sigs)
+      when is_reference(session) and is_list(partial_sigs) and partial_sigs != [],
+      do: Secp256k1.NIF.musig_partial_sig_agg(session, partial_sigs)
 end

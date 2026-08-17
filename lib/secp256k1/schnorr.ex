@@ -28,9 +28,11 @@ defmodule Secp256k1.Schnorr do
 
   """
   @spec sign(message :: binary(), seckey :: Secp256k1.seckey()) :: Secp256k1.schnorr_sig()
-  def sign(message, seckey) when is_hash(message) and is_seckey(seckey), do: sign32(message, seckey)
+  def sign(message, seckey) when is_hash(message) and is_seckey(seckey),
+    do: sign32(message, seckey)
 
-  def sign(message, seckey) when is_binary(message) and is_seckey(seckey), do: sign_custom(message, seckey)
+  def sign(message, seckey) when is_binary(message) and is_seckey(seckey),
+    do: sign_custom(message, seckey)
 
   @doc """
   Generate Schnorr signature of a hash (AUX is randomly generated)
@@ -49,7 +51,8 @@ defmodule Secp256k1.Schnorr do
           seckey :: Secp256k1.seckey(),
           aux :: <<_::32, _::_*8>>
         ) :: Secp256k1.schnorr_sig()
-  def sign32(msg_hash, seckey, aux) when is_hash(msg_hash) and is_seckey(seckey) and is_bin_size(aux, 32) do
+  def sign32(msg_hash, seckey, aux)
+      when is_hash(msg_hash) and is_seckey(seckey) and is_bin_size(aux, 32) do
     Secp256k1.NIF.schnorr_sign32(msg_hash, seckey, aux)
   end
 
@@ -66,7 +69,8 @@ defmodule Secp256k1.Schnorr do
   """
   @spec sign_custom(message :: binary(), seckey :: Secp256k1.seckey(), aux :: <<_::32, _::_*8>>) ::
           Secp256k1.schnorr_sig()
-  def sign_custom(message, seckey, aux) when is_binary(message) and is_seckey(seckey) and is_bin_size(aux, 32) do
+  def sign_custom(message, seckey, aux)
+      when is_binary(message) and is_seckey(seckey) and is_bin_size(aux, 32) do
     Secp256k1.NIF.schnorr_sign_custom(message, seckey, aux)
   end
 
