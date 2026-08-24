@@ -3,28 +3,27 @@
 
 // API
 
-ERL_NIF_TERM
-secp256k1_nif_ecdsa_compressed_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+static ERL_NIF_TERM
+ecdsa_seckey_pubkey(
+  ErlNifEnv *env,
+  const ERL_NIF_TERM argv[],
+  unsigned int serialization_flags,
+  size_t serialized_size
+)
 {
   secp256k1_context *ctx = nif_ctx(env);
-  (void)argc;
-
-  ERL_NIF_TERM result;
   ErlNifBinary seckey;
-
   secp256k1_pubkey pubkey;
-
-  unsigned char serialized_pubkey[33];
+  unsigned char serialized_pubkey[65];
   unsigned char *finished;
-  size_t len;
+  size_t len = serialized_size;
+  ERL_NIF_TERM result;
 
-  // load arguments
   if (!enif_inspect_binary(env, argv[0], &seckey))
   {
     return enif_make_badarg(env);
   }
 
-  // check arguments size
   if (!(seckey.size == 32 && secp256k1_ec_seckey_verify(ctx, seckey.data)))
   {
     return enif_make_badarg(env);
@@ -35,148 +34,96 @@ secp256k1_nif_ecdsa_compressed_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TE
     return error_result(env, "secp256k1_ec_pubkey_create failed");
   }
 
-  len = sizeof(serialized_pubkey);
-  if (!secp256k1_ec_pubkey_serialize(ctx, serialized_pubkey, &len, &pubkey, SECP256K1_EC_COMPRESSED))
+  if (!secp256k1_ec_pubkey_serialize(
+      ctx,
+      serialized_pubkey,
+      &len,
+      &pubkey,
+      serialization_flags
+    ))
   {
     return error_result(env, "secp256k1_ec_pubkey_serialize failed");
   }
 
-  /* Convert serialized pubkey to Erlang binary */
-  finished = enif_make_new_binary(env, sizeof(serialized_pubkey), &result);
-  memcpy(finished, serialized_pubkey, sizeof(serialized_pubkey));
+  finished = enif_make_new_binary(env, serialized_size, &result);
+  memcpy(finished, serialized_pubkey, serialized_size);
   return result;
+}
+
+ERL_NIF_TERM
+secp256k1_nif_ecdsa_compressed_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+{
+  (void)argc;
+  return ecdsa_seckey_pubkey(env, argv, SECP256K1_EC_COMPRESSED, 33);
 }
 
 ERL_NIF_TERM
 secp256k1_nif_ecdsa_uncompressed_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-  secp256k1_context *ctx = nif_ctx(env);
   (void)argc;
+  return ecdsa_seckey_pubkey(env, argv, SECP256K1_EC_UNCOMPRESSED, 65);
+}
 
-  ERL_NIF_TERM result;
-  ErlNifBinary seckey;
-
+static ERL_NIF_TERM
+ecdsa_parse_pubkey(
+  ErlNifEnv *env,
+  const ERL_NIF_TERM argv[],
+  size_t input_size,
+  unsigned int serialization_flags,
+  size_t serialized_size
+)
+{
+  secp256k1_context *ctx = nif_ctx(env);
+  ErlNifBinary input;
   secp256k1_pubkey pubkey;
-
   unsigned char serialized_pubkey[65];
   unsigned char *finished;
-  size_t len;
+  size_t len = serialized_size;
+  ERL_NIF_TERM result;
 
-  // load arguments
-  if (!enif_inspect_binary(env, argv[0], &seckey))
+  if (!enif_inspect_binary(env, argv[0], &input))
   {
     return enif_make_badarg(env);
   }
 
-  // check arguments size
-  if (!(seckey.size == 32 && secp256k1_ec_seckey_verify(ctx, seckey.data)))
+  if (input.size != input_size)
   {
     return enif_make_badarg(env);
   }
 
-  if (!secp256k1_ec_pubkey_create(ctx, &pubkey, seckey.data))
+  if (!secp256k1_ec_pubkey_parse(ctx, &pubkey, input.data, input.size))
   {
-    return error_result(env, "secp256k1_ec_pubkey_create failed");
+    return error_result(env, "secp256k1_ec_pubkey_parse failed");
   }
 
-  len = sizeof(serialized_pubkey);
-  if (!secp256k1_ec_pubkey_serialize(ctx, serialized_pubkey, &len, &pubkey, SECP256K1_EC_UNCOMPRESSED))
+  if (!secp256k1_ec_pubkey_serialize(
+      ctx,
+      serialized_pubkey,
+      &len,
+      &pubkey,
+      serialization_flags
+    ))
   {
     return error_result(env, "secp256k1_ec_pubkey_serialize failed");
   }
 
-  /* Convert serialized pubkey to Erlang binary */
-  finished = enif_make_new_binary(env, sizeof(serialized_pubkey), &result);
-  memcpy(finished, serialized_pubkey, sizeof(serialized_pubkey));
+  finished = enif_make_new_binary(env, serialized_size, &result);
+  memcpy(finished, serialized_pubkey, serialized_size);
   return result;
 }
 
 ERL_NIF_TERM
 secp256k1_nif_ecdsa_compress_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-  secp256k1_context *ctx = nif_ctx(env);
   (void)argc;
-
-  ERL_NIF_TERM result;
-  ErlNifBinary input;
-
-  secp256k1_pubkey pubkey;
-
-  unsigned char serialized_pubkey[33];
-  unsigned char *finished;
-  size_t len;
-
-  // load arguments
-  if (!enif_inspect_binary(env, argv[0], &input))
-  {
-    return enif_make_badarg(env);
-  }
-
-  // check arguments size
-  if (input.size != 65)
-  {
-    return enif_make_badarg(env);
-  }
-
-  if (!secp256k1_ec_pubkey_parse(ctx, &pubkey, input.data, input.size))
-  {
-    return error_result(env, "secp256k1_ec_pubkey_parse failed");
-  }
-
-  len = sizeof(serialized_pubkey);
-  if (!secp256k1_ec_pubkey_serialize(ctx, serialized_pubkey, &len, &pubkey, SECP256K1_EC_COMPRESSED))
-  {
-    return error_result(env, "secp256k1_ec_pubkey_serialize failed");
-  }
-
-  /* Convert serialized pubkey to Erlang binary */
-  finished = enif_make_new_binary(env, sizeof(serialized_pubkey), &result);
-  memcpy(finished, serialized_pubkey, sizeof(serialized_pubkey));
-  return result;
+  return ecdsa_parse_pubkey(env, argv, 65, SECP256K1_EC_COMPRESSED, 33);
 }
 
 ERL_NIF_TERM
 secp256k1_nif_ecdsa_decompress_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-  secp256k1_context *ctx = nif_ctx(env);
   (void)argc;
-
-  ERL_NIF_TERM result;
-  ErlNifBinary input;
-
-  secp256k1_pubkey pubkey;
-
-  unsigned char serialized_pubkey[65];
-  unsigned char *finished;
-  size_t len;
-
-  // load arguments
-  if (!enif_inspect_binary(env, argv[0], &input))
-  {
-    return enif_make_badarg(env);
-  }
-
-  // check arguments size
-  if (input.size != 33)
-  {
-    return enif_make_badarg(env);
-  }
-
-  if (!secp256k1_ec_pubkey_parse(ctx, &pubkey, input.data, input.size))
-  {
-    return error_result(env, "secp256k1_ec_pubkey_parse failed");
-  }
-
-  len = sizeof(serialized_pubkey);
-  if (!secp256k1_ec_pubkey_serialize(ctx, serialized_pubkey, &len, &pubkey, SECP256K1_EC_UNCOMPRESSED))
-  {
-    return error_result(env, "secp256k1_ec_pubkey_serialize failed");
-  }
-
-  /* Convert serialized pubkey to Erlang binary */
-  finished = enif_make_new_binary(env, sizeof(serialized_pubkey), &result);
-  memcpy(finished, serialized_pubkey, sizeof(serialized_pubkey));
-  return result;
+  return ecdsa_parse_pubkey(env, argv, 33, SECP256K1_EC_UNCOMPRESSED, 65);
 }
 
 ERL_NIF_TERM

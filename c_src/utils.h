@@ -16,6 +16,7 @@ typedef struct {
 secp256k1_nif_state *secp256k1_nif_state_create(void);
 void secp256k1_nif_state_destroy(secp256k1_nif_state *state);
 void secure_erase(void *ptr, size_t len);
+int make_binary(ErlNifEnv *env, const unsigned char *data, size_t size, ERL_NIF_TERM *result);
 ERL_NIF_TERM error_result(ErlNifEnv *env, const char *error_msg);
 
 static inline secp256k1_nif_state *

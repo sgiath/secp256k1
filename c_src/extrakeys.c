@@ -57,20 +57,6 @@ secp256k1_nif_valid_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   return enif_make_atom(env, valid ? "true" : "false");
 }
 
-static int
-make_binary(ErlNifEnv *env, const unsigned char *data, size_t size, ERL_NIF_TERM *result)
-{
-  ErlNifBinary bin;
-
-  if (!enif_alloc_binary(size, &bin)) {
-    return 0;
-  }
-
-  memcpy(bin.data, data, size);
-  *result = enif_make_binary(env, &bin);
-  return 1;
-}
-
 ERL_NIF_TERM
 secp256k1_nif_xonly_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {

@@ -154,7 +154,7 @@ secp256k1_nif_musig_pubkey_agg(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv
   secp256k1_xonly_pubkey agg_pk;
   secp256k1_musig_keyagg_cache cache;
   unsigned char serialized_agg_pk[32];
-  ErlNifBinary bin_agg_pk;
+  ERL_NIF_TERM agg_pk_term;
   ERL_NIF_TERM cache_term;
   unsigned int i;
 
@@ -198,22 +198,20 @@ secp256k1_nif_musig_pubkey_agg(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv
     return error_result(env, "secp256k1_xonly_pubkey_serialize failed");
   }
 
-  if (!enif_alloc_binary(sizeof(serialized_agg_pk), &bin_agg_pk)) {
+  if (!make_binary(env, serialized_agg_pk, sizeof(serialized_agg_pk), &agg_pk_term)) {
     return enif_make_tuple2(env,
       enif_make_atom(env, "error"),
       enif_make_atom(env, "allocation_failed")
     );
   }
-  memcpy(bin_agg_pk.data, serialized_agg_pk, sizeof(serialized_agg_pk));
 
   if (!make_keyagg_cache_resource(env, &cache, &cache_term)) {
-    enif_release_binary(&bin_agg_pk);
     return error_result(env, "enif_alloc_resource failed");
   }
 
   return enif_make_tuple3(env,
     enif_make_atom(env, "ok"),
-    enif_make_binary(env, &bin_agg_pk),
+    agg_pk_term,
     cache_term
   );
 
@@ -234,7 +232,7 @@ secp256k1_nif_musig_pubkey_get(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv
   secp256k1_pubkey agg_pk;
   unsigned char serialized_pk[33];
   size_t len = sizeof(serialized_pk);
-  ErlNifBinary bin_pk;
+  ERL_NIF_TERM result;
 
   if (!enif_get_resource(env, argv[0], nif_state(env)->keyagg_cache_rt, (void **)&cache)) {
     return enif_make_badarg(env);
@@ -248,32 +246,40 @@ secp256k1_nif_musig_pubkey_get(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv
     return error_result(env, "secp256k1_ec_pubkey_serialize failed");
   }
 
-  if (!enif_alloc_binary(len, &bin_pk)) {
+  if (!make_binary(env, serialized_pk, len, &result)) {
     return enif_make_tuple2(env,
       enif_make_atom(env, "error"),
       enif_make_atom(env, "allocation_failed")
     );
   }
-  memcpy(bin_pk.data, serialized_pk, len);
 
-  return enif_make_binary(env, &bin_pk);
+  return result;
 }
 
-ERL_NIF_TERM
-secp256k1_nif_musig_pubkey_ec_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+typedef int (*musig_pubkey_tweak_add_fn)(
+  const secp256k1_context *,
+  secp256k1_pubkey *,
+  secp256k1_musig_keyagg_cache *,
+  const unsigned char *
+);
+
+static ERL_NIF_TERM
+musig_pubkey_tweak_add(
+  ErlNifEnv *env,
+  const ERL_NIF_TERM argv[],
+  musig_pubkey_tweak_add_fn tweak_add,
+  const char *tweak_error
+)
 {
   secp256k1_context *ctx = nif_ctx(env);
-
-  (void)argc;
-
   ErlNifBinary bin_tweak;
   keyagg_cache_wrapper *cache_wrapper;
   secp256k1_musig_keyagg_cache cache;
   secp256k1_pubkey output_pk;
   unsigned char serialized_pk[33];
   size_t len = sizeof(serialized_pk);
-  ErlNifBinary bin_pk;
   ERL_NIF_TERM cache_term;
+  ERL_NIF_TERM pubkey_term;
 
   if (!enif_get_resource(env, argv[0], nif_state(env)->keyagg_cache_rt, (void **)&cache_wrapper) ||
       !enif_inspect_binary(env, argv[1], &bin_tweak) || bin_tweak.size != 32) {
@@ -281,81 +287,49 @@ secp256k1_nif_musig_pubkey_ec_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_
   }
   memcpy(&cache, &cache_wrapper->cache, sizeof(cache));
 
-  if (!secp256k1_musig_pubkey_ec_tweak_add(ctx, &output_pk, &cache, bin_tweak.data)) {
-    return error_result(env, "secp256k1_musig_pubkey_ec_tweak_add failed");
+  if (!tweak_add(ctx, &output_pk, &cache, bin_tweak.data)) {
+    return error_result(env, tweak_error);
   }
 
   if (!secp256k1_ec_pubkey_serialize(ctx, serialized_pk, &len, &output_pk, SECP256K1_EC_COMPRESSED)) {
     return error_result(env, "secp256k1_ec_pubkey_serialize failed");
   }
 
-  if (!enif_alloc_binary(len, &bin_pk)) {
+  if (!make_binary(env, serialized_pk, len, &pubkey_term)) {
     return enif_make_tuple2(env,
       enif_make_atom(env, "error"),
       enif_make_atom(env, "allocation_failed")
     );
   }
-  memcpy(bin_pk.data, serialized_pk, len);
 
   if (!make_keyagg_cache_resource(env, &cache, &cache_term)) {
-    enif_release_binary(&bin_pk);
     return error_result(env, "enif_alloc_resource failed");
   }
 
-  return enif_make_tuple3(env,
-    enif_make_atom(env, "ok"),
-    cache_term,
-    enif_make_binary(env, &bin_pk)
+  return enif_make_tuple3(env, enif_make_atom(env, "ok"), cache_term, pubkey_term);
+}
+
+ERL_NIF_TERM
+secp256k1_nif_musig_pubkey_ec_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+{
+  (void)argc;
+  return musig_pubkey_tweak_add(
+    env,
+    argv,
+    secp256k1_musig_pubkey_ec_tweak_add,
+    "secp256k1_musig_pubkey_ec_tweak_add failed"
   );
 }
 
 ERL_NIF_TERM
 secp256k1_nif_musig_pubkey_xonly_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-  secp256k1_context *ctx = nif_ctx(env);
-
   (void)argc;
-
-  ErlNifBinary bin_tweak;
-  keyagg_cache_wrapper *cache_wrapper;
-  secp256k1_musig_keyagg_cache cache;
-  secp256k1_pubkey output_pk;
-  unsigned char serialized_pk[33];
-  size_t len = sizeof(serialized_pk);
-  ErlNifBinary bin_pk;
-  ERL_NIF_TERM cache_term;
-
-  if (!enif_get_resource(env, argv[0], nif_state(env)->keyagg_cache_rt, (void **)&cache_wrapper) ||
-      !enif_inspect_binary(env, argv[1], &bin_tweak) || bin_tweak.size != 32) {
-    return enif_make_badarg(env);
-  }
-  memcpy(&cache, &cache_wrapper->cache, sizeof(cache));
-
-  if (!secp256k1_musig_pubkey_xonly_tweak_add(ctx, &output_pk, &cache, bin_tweak.data)) {
-    return error_result(env, "secp256k1_musig_pubkey_xonly_tweak_add failed");
-  }
-
-  if (!secp256k1_ec_pubkey_serialize(ctx, serialized_pk, &len, &output_pk, SECP256K1_EC_COMPRESSED)) {
-    return error_result(env, "secp256k1_ec_pubkey_serialize failed");
-  }
-
-  if (!enif_alloc_binary(len, &bin_pk)) {
-    return enif_make_tuple2(env,
-      enif_make_atom(env, "error"),
-      enif_make_atom(env, "allocation_failed")
-    );
-  }
-  memcpy(bin_pk.data, serialized_pk, len);
-
-  if (!make_keyagg_cache_resource(env, &cache, &cache_term)) {
-    enif_release_binary(&bin_pk);
-    return error_result(env, "enif_alloc_resource failed");
-  }
-
-  return enif_make_tuple3(env,
-    enif_make_atom(env, "ok"),
-    cache_term,
-    enif_make_binary(env, &bin_pk)
+  return musig_pubkey_tweak_add(
+    env,
+    argv,
+    secp256k1_musig_pubkey_xonly_tweak_add,
+    "secp256k1_musig_pubkey_xonly_tweak_add failed"
   );
 }
 
@@ -710,7 +684,7 @@ secp256k1_nif_musig_partial_sig_agg(ErlNifEnv *env, int argc, const ERL_NIF_TERM
   secp256k1_musig_partial_sig *sigs;
   const secp256k1_musig_partial_sig **sigs_ptrs;
   unsigned char sig64[64];
-  ErlNifBinary bin_sig64;
+  ERL_NIF_TERM result;
   unsigned int i;
 
   if (!enif_get_resource(env, argv[0], nif_state(env)->session_rt, (void **)&session)) {
@@ -750,15 +724,14 @@ secp256k1_nif_musig_partial_sig_agg(ErlNifEnv *env, int argc, const ERL_NIF_TERM
   enif_free(sigs);
   enif_free(sigs_ptrs);
 
-  if (!enif_alloc_binary(sizeof(sig64), &bin_sig64)) {
+  if (!make_binary(env, sig64, sizeof(sig64), &result)) {
     return enif_make_tuple2(env,
       enif_make_atom(env, "error"),
       enif_make_atom(env, "allocation_failed")
     );
   }
-  memcpy(bin_sig64.data, sig64, sizeof(sig64));
 
-  return enif_make_binary(env, &bin_sig64);
+  return result;
 
 bad_arg:
   enif_free(sigs);

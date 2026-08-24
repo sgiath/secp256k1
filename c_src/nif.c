@@ -37,9 +37,11 @@ static ErlNifFunc nif_funcs[] = {
 };
 
 static int
-load_state(ErlNifEnv *env, void **priv_data)
+load(ErlNifEnv *env, void **priv_data, ERL_NIF_TERM load_info)
 {
   secp256k1_nif_state *state = secp256k1_nif_state_create();
+
+  (void)load_info;
 
   if (!state) {
     return -1;
@@ -52,13 +54,6 @@ load_state(ErlNifEnv *env, void **priv_data)
 
   *priv_data = state;
   return 0;
-}
-
-static int
-load(ErlNifEnv *env, void **priv_data, ERL_NIF_TERM load_info)
-{
-  (void)load_info;
-  return load_state(env, priv_data);
 }
 
 static int

@@ -46,6 +46,20 @@ secure_erase(void *ptr, size_t len)
 #endif
 }
 
+int
+make_binary(ErlNifEnv *env, const unsigned char *data, size_t size, ERL_NIF_TERM *result)
+{
+  ErlNifBinary bin;
+
+  if (!enif_alloc_binary(size, &bin)) {
+    return 0;
+  }
+
+  memcpy(bin.data, data, size);
+  *result = enif_make_binary(env, &bin);
+  return 1;
+}
+
 secp256k1_nif_state *
 secp256k1_nif_state_create(void)
 {
