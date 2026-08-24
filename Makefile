@@ -3,11 +3,8 @@ LIB_VERSION := v0.7.1
 LIB_COMMIT := 1a53f4961f337b4d166c25fce72ef0dc88806618
 LIB_SHA256 := 0f587e73557494d423beeeaa0a4c4c0331bb612880c330fdc99dfd902e9ce020
 
-.DEFAULT_GOAL := all
-
 # --- Tools ---
 CC ?= gcc
-MAKE := $(MAKE)
 
 # --- Directories ---
 TARGET_DIR := ./priv
