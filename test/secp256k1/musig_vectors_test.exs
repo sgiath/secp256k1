@@ -13,8 +13,8 @@ defmodule Secp256k1Test.MuSigVectors do
     pubkeys = @key_agg["pubkeys"]
 
     for case_data <- @key_agg["valid"] do
-      keys = Enum.map(case_data["key_indices"], &hex_to_bin(Enum.at(pubkeys, &1)))
-      expected = hex_to_bin(case_data["expected"])
+      keys = Enum.map(case_data["key_indices"], &d(Enum.at(pubkeys, &1)))
+      expected = d(case_data["expected"])
 
       assert {:ok, agg_xonly, _cache} = MuSig.pubkey_agg(keys)
       assert agg_xonly == expected
@@ -25,7 +25,7 @@ defmodule Secp256k1Test.MuSigVectors do
     pubkeys = @key_agg["pubkeys"]
 
     for case_data <- @key_agg["invalid"], case_data["error"] == "MUSIG_PUBKEY" do
-      keys = Enum.map(case_data["key_indices"], &hex_to_bin(Enum.at(pubkeys, &1)))
+      keys = Enum.map(case_data["key_indices"], &d(Enum.at(pubkeys, &1)))
 
       assert_raise ArgumentError, fn ->
         MuSig.pubkey_agg(keys)
@@ -37,8 +37,8 @@ defmodule Secp256k1Test.MuSigVectors do
     pubnonces = @nonce_agg["pubnonces"]
 
     for case_data <- @nonce_agg["valid"] do
-      nonces = Enum.map(case_data["pnonce_indices"], &hex_to_bin(Enum.at(pubnonces, &1)))
-      expected = hex_to_bin(case_data["expected"])
+      nonces = Enum.map(case_data["pnonce_indices"], &d(Enum.at(pubnonces, &1)))
+      expected = d(case_data["expected"])
 
       aggnonce = MuSig.nonce_agg(nonces)
 
@@ -50,15 +50,11 @@ defmodule Secp256k1Test.MuSigVectors do
     pubnonces = @nonce_agg["pubnonces"]
 
     for case_data <- @nonce_agg["invalid"] do
-      nonces = Enum.map(case_data["pnonce_indices"], &hex_to_bin(Enum.at(pubnonces, &1)))
+      nonces = Enum.map(case_data["pnonce_indices"], &d(Enum.at(pubnonces, &1)))
 
       assert_raise ArgumentError, fn ->
         MuSig.nonce_agg(nonces)
       end
     end
-  end
-
-  defp hex_to_bin(hex) when is_binary(hex) do
-    Base.decode16!(hex, case: :mixed)
   end
 end

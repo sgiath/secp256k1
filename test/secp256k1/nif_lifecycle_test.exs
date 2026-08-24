@@ -6,20 +6,13 @@ defmodule Secp256k1Test.NifLifecycle do
   alias Secp256k1.MuSig
   alias Secp256k1.Schnorr
 
-  @legacy_nifs ~w(ecdsa.so schnorrsig.so ecdh.so extrakeys.so musig.so)
-
   test "package contains only the unified NIF shared object" do
     priv_files =
       :lib_secp256k1
       |> Application.app_dir("priv")
       |> File.ls!()
 
-    assert "secp256k1_nif.so" in priv_files
     assert ["secp256k1_nif.so"] == Enum.filter(priv_files, &String.ends_with?(&1, ".so"))
-
-    for legacy_nif <- @legacy_nifs do
-      refute legacy_nif in priv_files
-    end
   end
 
   test "NIF upgrade preserves resources and every feature family remains usable" do
