@@ -168,8 +168,7 @@ defmodule Secp256k1.ECDSA do
           pubkey :: Secp256k1.full_pubkey()
         ) :: boolean()
   def valid?(signature, msg_hash, pubkey)
-      when is_ecdsa_sig(signature) and is_hash(msg_hash) and
-             (is_compressed_pubkey(pubkey) or is_uncompressed_pubkey(pubkey)) do
+      when is_ecdsa_sig(signature) and is_hash(msg_hash) and is_full_pubkey(pubkey) do
     Secp256k1.NIF.ecdsa_valid?(signature, msg_hash, pubkey)
   end
 end

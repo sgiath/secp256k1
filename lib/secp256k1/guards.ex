@@ -39,6 +39,12 @@ defmodule Secp256k1.Guards do
   defguard is_xonly_pubkey(pubkey) when is_bin_size(pubkey, 32)
 
   @doc """
+  Is full (compressed or uncompressed) pubkey (probably) - binary 33 or 65 bytes long
+  """
+  defguard is_full_pubkey(pubkey)
+           when is_compressed_pubkey(pubkey) or is_uncompressed_pubkey(pubkey)
+
+  @doc """
   Is any type of pubkey (probably)
   """
   defguard is_pubkey(pubkey)

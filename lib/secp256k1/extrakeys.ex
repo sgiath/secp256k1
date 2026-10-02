@@ -71,9 +71,8 @@ defmodule Secp256k1.Extrakeys do
           Secp256k1.compressed_pubkey()
           | Secp256k1.uncompressed_pubkey()
           | {:error, binary() | :allocation_failed}
-  def ec_pubkey_tweak_add(pubkey, tweak)
-      when (is_compressed_pubkey(pubkey) or is_uncompressed_pubkey(pubkey)) and is_tweak(tweak),
-      do: Secp256k1.NIF.ec_pubkey_tweak_add(pubkey, tweak)
+  def ec_pubkey_tweak_add(pubkey, tweak) when is_full_pubkey(pubkey) and is_tweak(tweak),
+    do: Secp256k1.NIF.ec_pubkey_tweak_add(pubkey, tweak)
 
   @doc """
   Tweaks a secret key using x-only public-key semantics.

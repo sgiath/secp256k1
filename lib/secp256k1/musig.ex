@@ -201,8 +201,7 @@ defmodule Secp256k1.MuSig do
         ) :: {:ok, secnonce(), pubnonce()} | {:error, binary() | :allocation_failed}
   # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   def nonce_gen(seckey, pubkey, msg, cache, extra)
-      when (is_nil(seckey) or is_seckey(seckey)) and
-             (is_compressed_pubkey(pubkey) or is_uncompressed_pubkey(pubkey)) and
+      when (is_nil(seckey) or is_seckey(seckey)) and is_full_pubkey(pubkey) and
              (is_nil(msg) or is_hash(msg)) and (is_nil(cache) or is_reference(cache)) and
              (is_nil(extra) or is_bin_size(extra, 32)),
       do: Secp256k1.NIF.musig_nonce_gen(seckey, pubkey, msg, cache, extra)
@@ -280,8 +279,7 @@ defmodule Secp256k1.MuSig do
           session()
         ) :: boolean()
   def partial_sig_verify(psig, pubnonce, pubkey, cache, session)
-      when is_bin_size(psig, 32) and is_bin_size(pubnonce, 66) and
-             (is_compressed_pubkey(pubkey) or is_uncompressed_pubkey(pubkey)) and
+      when is_bin_size(psig, 32) and is_bin_size(pubnonce, 66) and is_full_pubkey(pubkey) and
              is_reference(cache) and is_reference(session),
       do: Secp256k1.NIF.musig_partial_sig_verify(psig, pubnonce, pubkey, cache, session)
 

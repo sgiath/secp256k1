@@ -24,8 +24,7 @@ defmodule Secp256k1.ECDH do
   """
   @spec ecdh(seckey :: Secp256k1.seckey(), pubkey :: Secp256k1.full_pubkey()) ::
           Secp256k1.shared_secret() | {:error, binary() | :allocation_failed}
-  def ecdh(seckey, pubkey)
-      when is_seckey(seckey) and (is_compressed_pubkey(pubkey) or is_uncompressed_pubkey(pubkey)) do
+  def ecdh(seckey, pubkey) when is_seckey(seckey) and is_full_pubkey(pubkey) do
     Secp256k1.NIF.ecdh(seckey, pubkey)
   end
 end
