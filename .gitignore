@@ -27,11 +27,14 @@ lib_secp256k1-*.tar
 
 # binaries
 /priv/*.so
+/priv/*.so.tmp.*
 /c_src/*.o
+/c_src/*.o.tmp.*
 /c_src/.build-config*
 
 # 3rd party library
 /c_src/secp256k1/
+/c_src/secp256k1.tmp.*/
 
 .env
 

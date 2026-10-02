@@ -25,6 +25,10 @@ LIB_MAKE_LOG := $(LIB_SRC_DIR)/.nif-make.log
 NIF_BUILD_CONFIG := $(SRC_DIR)/.build-config
 LIB_BUILD_CONFIG := $(SRC_DIR)/.build-config-libsecp256k1
 
+# Path of this Makefile. First-party objects and the NIF depend on it, so a
+# changed compile or link recipe rebuilds them.
+THIS_MAKEFILE := $(lastword $(MAKEFILE_LIST))
+
 # --- Verbosity Control ---
 # Default to quiet execution. Run `make V=1` for verbose output.
 ifndef V
@@ -63,14 +67,18 @@ ifeq ($(ERTS_REQUIRED),yes)
   endif
 endif
 
-CPPFLAGS += -I$(ERTS_INCLUDE_DIR)
-CPPFLAGS += -I$(LIB_SRC_DIR)/include
-
+# User flags. A command-line assignment (`make CFLAGS=-O2`) replaces these
+# entirely, so nothing the NIF needs to build lives here.
 CFLAGS ?= -O3 -std=c99 -finline-functions -Wall -Wmissing-prototypes
-CFLAGS += -fPIC # Required for shared objects
-
+CPPFLAGS ?=
 LDFLAGS ?=
 LIBS ?=
+
+# Required NIF flags, always passed next to the user flags above. They are not
+# exported, so the upstream configure never sees them.
+NIF_REQUIRED_CPPFLAGS := -I$(ERTS_INCLUDE_DIR) -I$(LIB_SRC_DIR)/include
+NIF_REQUIRED_CFLAGS := -fPIC
+NIF_REQUIRED_LDFLAGS := -shared
 
 # add macOS specific LDFLAGS
 # `uname -s` describes the build host, not the build target, so it must not be
@@ -82,7 +90,7 @@ LIBS ?=
 OS := $(shell uname -s)
 ifeq ($(CROSSCOMPILE),)
   ifeq ($(OS), Darwin)
-    LDFLAGS += -undefined dynamic_lookup
+    NIF_REQUIRED_LDFLAGS += -undefined dynamic_lookup
   endif
 endif
 
@@ -102,8 +110,9 @@ ifeq ($(SECP256K1_NIF_SANITIZE),1)
   NIF_SANITIZE_FLAGS := -fsanitize=address,undefined -fno-omit-frame-pointer -g
 endif
 
-NIF_CFLAGS = $(CFLAGS) $(NIF_WERROR_FLAGS) $(NIF_SANITIZE_FLAGS)
-NIF_LDFLAGS = $(CFLAGS) $(NIF_SANITIZE_FLAGS)
+NIF_CPPFLAGS = $(NIF_REQUIRED_CPPFLAGS) $(CPPFLAGS)
+NIF_CFLAGS = $(CFLAGS) $(NIF_REQUIRED_CFLAGS) $(NIF_WERROR_FLAGS) $(NIF_SANITIZE_FLAGS)
+NIF_LDFLAGS = $(CFLAGS) $(NIF_REQUIRED_CFLAGS) $(NIF_SANITIZE_FLAGS)
 
 # --- secp256k1 Library Options ---
 CONFIG_OPTS = --disable-benchmark --disable-tests --disable-fast-install --with-pic --enable-experimental --enable-module-musig
@@ -130,6 +139,10 @@ LIB_BUILD_CONFIG_LINES = \
 NIF_BUILD_CONFIG_LINES = \
 	$(LIB_BUILD_CONFIG_LINES) \
 	'LIBS=$(call sq,$(LIBS))' \
+	'NIF_REQUIRED_CPPFLAGS=$(call sq,$(NIF_REQUIRED_CPPFLAGS))' \
+	'NIF_REQUIRED_CFLAGS=$(call sq,$(NIF_REQUIRED_CFLAGS))' \
+	'NIF_REQUIRED_LDFLAGS=$(call sq,$(NIF_REQUIRED_LDFLAGS))' \
+	'NIF_SOURCES=$(call sq,$(NIF_SOURCES))' \
 	'SECP256K1_NIF_WERROR=$(call sq,$(NIF_WERROR_FLAGS))' \
 	'SECP256K1_NIF_SANITIZE=$(call sq,$(NIF_SANITIZE_FLAGS))'
 
@@ -140,8 +153,16 @@ write_if_changed = tmp="$(1).tmp.$$$$"; \
 	printf '%s\n' $(2) > "$$tmp" && \
 	if cmp -s "$$tmp" "$(1)"; then rm -f "$$tmp"; else mv -f "$$tmp" "$(1)"; fi
 
+# $(call atomic_output,TARGET,COMMAND)
+# COMMAND writes "$$tmp", a per-process name next to TARGET, which then replaces
+# TARGET with one rename. Concurrent makes never interleave writes, and a
+# running BEAM keeps its mapped copy of a replaced NIF.
+atomic_output = tmp="$(1).tmp.$$$$"; \
+	( $(2) ) && mv -f "$$tmp" "$(1)" || { status=$$?; rm -f "$$tmp"; exit $$status; }
+
 # --- Source Files & Targets ---
-NIF_SOURCES = $(wildcard $(SRC_DIR)/*.c)
+# Sorted so the link order and the NIF fingerprint are stable.
+NIF_SOURCES = $(sort $(wildcard $(SRC_DIR)/*.c))
 NIF_OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(SRC_DIR)/%.o,$(NIF_SOURCES))
 NIF_TARGET = $(TARGET_DIR)/secp256k1_nif.so
 
@@ -171,17 +192,23 @@ $(LIB_BUILD_CONFIG): FORCE
 # --- NIF Compilation and Link Rules ---
 # $@ = target file ($(SRC_DIR)/%.o)
 # $< = first prerequisite ($(SRC_DIR)/%.c)
-$(SRC_DIR)/%.o: $(SRC_DIR)/%.c $(NIF_HEADERS) $(EXTRACT_STAMP) $(NIF_BUILD_CONFIG)
+$(SRC_DIR)/%.o: $(SRC_DIR)/%.c $(NIF_HEADERS) $(EXTRACT_STAMP) $(NIF_BUILD_CONFIG) $(THIS_MAKEFILE)
 	$(ECHO) "  CC       $@"
-	@$(CC) $(CPPFLAGS) $(NIF_CFLAGS) -c -o $@ $<
+	@$(call atomic_output,$@,$(CC) $(NIF_CPPFLAGS) $(NIF_CFLAGS) -c -o "$$tmp" $<)
 
-$(NIF_TARGET): $(NIF_OBJECTS) $(LIB_STATIC_LIB) $(NIF_BUILD_CONFIG)
+$(NIF_TARGET): $(NIF_OBJECTS) $(LIB_STATIC_LIB) $(NIF_BUILD_CONFIG) $(THIS_MAKEFILE)
 	@mkdir -p $(@D)
 	$(ECHO) "  LD       $@"
-	@$(CC) $(NIF_LDFLAGS) -shared -o $@ $(NIF_OBJECTS) $(LIB_STATIC_LIB) $(LDFLAGS) $(LIBS)
+	@$(call atomic_output,$@,$(CC) $(NIF_LDFLAGS) -o "$$tmp" $(NIF_OBJECTS) $(LIB_STATIC_LIB) $(NIF_REQUIRED_LDFLAGS) $(LDFLAGS) $(LIBS))
 	@rm -f $(TARGET_DIR)/ecdsa.so $(TARGET_DIR)/schnorrsig.so $(TARGET_DIR)/ecdh.so $(TARGET_DIR)/extrakeys.so $(TARGET_DIR)/musig.so
 
 # --- secp256k1 Library Compilation Chain ---
+#
+# FIXME: concurrent make invocations in one checkout (e.g. two MIX_ENVs
+# compiling at once on a fresh clone) are safe for extraction, fingerprints,
+# objects, and the NIF link, but still share one upstream tree for configure
+# and make and can race there. A portable lock (no flock on macOS) with stale
+# lock recovery is not worth it here; run one `mix compile` first.
 
 # The static library depends on the Makefile existing *and* being configured
 $(LIB_STATIC_LIB): $(LIB_SRC_DIR)/Makefile
@@ -197,16 +224,16 @@ $(LIB_SRC_DIR)/Makefile: $(EXTRACT_STAMP) $(LIB_BUILD_CONFIG)
 	@$(call logged,$(LIB_CONFIGURE_LOG),cd $(LIB_SRC_DIR) && ./configure $(CONFIG_OPTS))
 
 # Verification happens at extraction time, not on every no-op compile.
+# The tarball is unpacked into a unique sibling directory (same filesystem, so
+# the rename is atomic) with the stamp already inside, so the tree and its stamp
+# appear together. The old stamp goes before the old tree so an interrupted
+# removal is never mistaken for a verified tree. If a concurrent make installs
+# its tree between our rm and mv, mv nests our copy inside it; theirs (same
+# verified tarball) is kept and cleanup_paths removes the nested copy.
 $(EXTRACT_STAMP): $(LIB_TARBALL)
 	$(ECHO) "  EXTRACT  libsecp256k1 ($(LIB_VERSION))"
-	@tmp="$(LIB_SRC_DIR).tmp"; stamp="$@"; installed=no; committed=no; \
-	cleanup_paths() { \
-		rm -rf "$$tmp" || :; \
-		if [ "$$committed" != yes ]; then \
-			rm -f "$$stamp" || :; \
-			if [ "$$installed" = yes ]; then rm -rf "$(LIB_SRC_DIR)" || :; fi; \
-		fi; \
-	}; \
+	@new=""; \
+	cleanup_paths() { if [ -n "$$new" ]; then rm -rf "$$new" || :; fi; }; \
 	on_exit() { status=$$?; trap - 0 1 2 15; cleanup_paths; exit "$$status"; }; \
 	on_signal() { trap - 0 1 2 15; cleanup_paths; exit 1; }; \
 	trap on_exit 0; \
@@ -218,14 +245,15 @@ $(EXTRACT_STAMP): $(LIB_TARBALL)
 		echo "libsecp256k1 tarball checksum mismatch: expected $(LIB_SHA256), got $$actual" >&2; \
 		exit 1; \
 	fi; \
-	rm -rf "$(LIB_SRC_DIR)" "$$tmp" && \
-	mkdir -p "$$tmp" && \
-	tar -xzf "$(LIB_TARBALL)" -C "$$tmp" --strip-components=1 && \
-	mv "$$tmp" "$(LIB_SRC_DIR)" && \
-	installed=yes && \
-	touch "$$stamp" && \
-	committed=yes && \
-	trap - 0 1 2 15
+	new=$$(mktemp -d "$(LIB_SRC_DIR).tmp.XXXXXX") && \
+	chmod 755 "$$new" && \
+	tar -xzf "$(LIB_TARBALL)" -C "$$new" --strip-components=1 && \
+	touch "$$new/$(notdir $@)" && \
+	rm -f "$@" && \
+	rm -rf "$(LIB_SRC_DIR)" && \
+	mv "$$new" "$(LIB_SRC_DIR)" && \
+	new="$(LIB_SRC_DIR)/$${new##*/}" && \
+	if [ ! -d "$$new" ]; then new=""; fi
 
 .PHONY: vendor
 vendor:
@@ -238,8 +266,8 @@ vendor:
 # clean: Remove built NIFs, build fingerprints, and the library build artifacts
 clean:
 	$(ECHO) "  CLEAN    build artifacts"
-	@rm -f $(TARGET_DIR)/*.so
-	@rm -f $(SRC_DIR)/*.o
+	@rm -f $(TARGET_DIR)/*.so $(TARGET_DIR)/*.so.tmp.*
+	@rm -f $(SRC_DIR)/*.o $(SRC_DIR)/*.o.tmp.*
 	@rm -f $(NIF_BUILD_CONFIG) $(NIF_BUILD_CONFIG).tmp.* $(LIB_BUILD_CONFIG) $(LIB_BUILD_CONFIG).tmp.*
 	@if [ -f "$(LIB_SRC_DIR)/Makefile" ]; then \
 		$(MAKE) -C $(LIB_SRC_DIR) clean $(QUIET_MAKE) $(QUIET_CMD); \
@@ -248,4 +276,4 @@ clean:
 # distclean: Remove everything clean does, plus the extracted library source
 distclean: clean
 	$(ECHO) "  CLEAN    extracted sources"
-	@rm -rf $(LIB_SRC_DIR) $(LIB_SRC_DIR).tmp
+	@rm -rf $(LIB_SRC_DIR) $(LIB_SRC_DIR).tmp.*
