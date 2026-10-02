@@ -5,6 +5,10 @@ defmodule Secp256k1Test.ECDSAWycheproof do
   alias Secp256k1.ECDSA
   alias Secp256k1Test.Vectors
 
+  # Pinned independently of the fixture so a fixture that shrinks together with its own
+  # `numberOfTests` still fails.
+  @expected_tests 463
+
   setup_all do
     {:ok, vectors: Vectors.load_wycheproof_ecdsa()}
   end
@@ -12,8 +16,9 @@ defmodule Secp256k1Test.ECDSAWycheproof do
   test "loads every declared Wycheproof case", %{vectors: vectors} do
     tc_ids = Enum.map(vectors.tests, & &1.tc_id)
 
-    assert length(vectors.tests) == vectors.number_of_tests
-    assert tc_ids == Enum.to_list(1..vectors.number_of_tests)
+    assert vectors.number_of_tests == @expected_tests
+    assert length(vectors.tests) == @expected_tests
+    assert tc_ids == Enum.to_list(1..@expected_tests)
   end
 
   test "Wycheproof ECDSA vectors", %{vectors: vectors} do
