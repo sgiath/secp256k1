@@ -18,47 +18,39 @@ secp256k1_nif_schnorr_sign32(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]
 
   secp256k1_keypair keypair;
 
-  unsigned char signature[64];
+  unsigned char signature[SCHNORR_SIG_SIZE];
 
   /* load arguments given by Elixir */
-  if (!enif_inspect_binary(env, argv[0], &message) ||
-      !enif_inspect_binary(env, argv[1], &seckey) ||
-      !enif_inspect_binary(env, argv[2], &auxiliary_rand))
-  {
+  if (!enif_inspect_binary(env, argv[0], &message) || !enif_inspect_binary(env, argv[1], &seckey) ||
+      !enif_inspect_binary(env, argv[2], &auxiliary_rand)) {
     return enif_make_badarg(env);
   }
 
   /* check expected arguments size */
-  if (!(seckey.size == 32 && secp256k1_ec_seckey_verify(ctx, seckey.data)))
-  {
+  if (!(seckey.size == SECKEY_SIZE && secp256k1_ec_seckey_verify(ctx, seckey.data))) {
     return enif_make_badarg(env);
   }
 
-  if (message.size != 32)
-  {
+  if (message.size != HASH_SIZE) {
     return enif_make_badarg(env);
   }
 
-  if (auxiliary_rand.size != 32)
-  {
+  if (auxiliary_rand.size != SCHNORR_AUX_RAND_SIZE) {
     return enif_make_badarg(env);
   }
 
-  if (!secp256k1_keypair_create(ctx, &keypair, seckey.data))
-  {
-    secure_erase(&keypair, sizeof(keypair));
-    return error_result(env, "secp256k1_keypair_create failed");
+  if (!secp256k1_keypair_create(ctx, &keypair, seckey.data)) {
+    result = error_result(env, "secp256k1_keypair_create failed");
+    goto cleanup;
   }
 
   /* Generate a Schnorr signature */
-  if (!secp256k1_schnorrsig_sign32(ctx, signature, message.data, &keypair, auxiliary_rand.data))
-  {
+  if (!secp256k1_schnorrsig_sign32(ctx, signature, message.data, &keypair, auxiliary_rand.data)) {
     result = error_result(env, "secp256k1_schnorrsig_sign32 failed");
     goto cleanup;
   }
 
-  if (!make_binary(env, signature, sizeof(signature), &result))
-  {
+  if (!make_binary(env, signature, sizeof(signature), &result)) {
     result = allocation_failed(env);
   }
 
@@ -79,45 +71,45 @@ secp256k1_nif_schnorr_sign_custom(ErlNifEnv *env, int argc, const ERL_NIF_TERM a
   secp256k1_schnorrsig_extraparams extraparams = SECP256K1_SCHNORRSIG_EXTRAPARAMS_INIT;
   secp256k1_keypair keypair;
 
-  unsigned char signature[64];
+  unsigned char signature[SCHNORR_SIG_SIZE];
 
   /* load arguments given by Elixir */
-  if (!enif_inspect_binary(env, argv[0], &message) ||
-      !enif_inspect_binary(env, argv[1], &seckey) ||
-      !enif_inspect_binary(env, argv[2], &auxiliary_rand))
-  {
+  if (!enif_inspect_binary(env, argv[0], &message) || !enif_inspect_binary(env, argv[1], &seckey) ||
+      !enif_inspect_binary(env, argv[2], &auxiliary_rand)) {
     return enif_make_badarg(env);
   }
 
-  if (auxiliary_rand.size != 32)
-  {
+  if (auxiliary_rand.size != SCHNORR_AUX_RAND_SIZE) {
     return enif_make_badarg(env);
   }
 
   /* check expected arguments size */
-  if (!(seckey.size == 32 && secp256k1_ec_seckey_verify(ctx, seckey.data)))
-  {
+  if (!(seckey.size == SECKEY_SIZE && secp256k1_ec_seckey_verify(ctx, seckey.data))) {
     return enif_make_badarg(env);
   }
 
-  if (!secp256k1_keypair_create(ctx, &keypair, seckey.data))
-  {
-    secure_erase(&keypair, sizeof(keypair));
-    return error_result(env, "secp256k1_keypair_create failed");
+  if (!secp256k1_keypair_create(ctx, &keypair, seckey.data)) {
+    result = error_result(env, "secp256k1_keypair_create failed");
+    goto cleanup;
   }
 
   /* Assign the randomness to the extraparams data field */
   extraparams.ndata = auxiliary_rand.data;
 
   /* Generate a Schnorr signature */
-  if (!secp256k1_schnorrsig_sign_custom(ctx, signature, message.data, message.size, &keypair, &extraparams))
-  {
+  if (!secp256k1_schnorrsig_sign_custom(
+        ctx,
+        signature,
+        message.data,
+        message.size,
+        &keypair,
+        &extraparams
+      )) {
     result = error_result(env, "secp256k1_schnorrsig_sign_custom failed");
     goto cleanup;
   }
 
-  if (!make_binary(env, signature, sizeof(signature), &result))
-  {
+  if (!make_binary(env, signature, sizeof(signature), &result)) {
     result = allocation_failed(env);
   }
 
@@ -138,25 +130,20 @@ secp256k1_nif_schnorr_valid(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 
   // load arguments
   if (!enif_inspect_binary(env, argv[0], &signature) ||
-      !enif_inspect_binary(env, argv[1], &message) ||
-      !enif_inspect_binary(env, argv[2], &pubkey))
-  {
+      !enif_inspect_binary(env, argv[1], &message) || !enif_inspect_binary(env, argv[2], &pubkey)) {
     return enif_make_badarg(env);
   }
 
   // check arguments size
-  if (signature.size != 64 || pubkey.size != 32)
-  {
+  if (signature.size != SCHNORR_SIG_SIZE || pubkey.size != XONLY_PUBKEY_SIZE) {
     return enif_make_badarg(env);
   }
 
-  if (!secp256k1_xonly_pubkey_parse(ctx, &xonly_pubkey, pubkey.data))
-  {
+  if (!secp256k1_xonly_pubkey_parse(ctx, &xonly_pubkey, pubkey.data)) {
     return enif_make_atom(env, "false");
   }
 
-  if (secp256k1_schnorrsig_verify(ctx, signature.data, message.data, message.size, &xonly_pubkey))
-  {
+  if (secp256k1_schnorrsig_verify(ctx, signature.data, message.data, message.size, &xonly_pubkey)) {
     return enif_make_atom(env, "true");
   }
 

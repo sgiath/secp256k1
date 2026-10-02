@@ -6,8 +6,9 @@ defmodule Secp256k1.MuSig do
   ## Signing transcript
 
   Every signer runs the same steps over the same public data. The values below form one
-  signing transcript; mixing values from different transcripts makes signing or verification
-  fail.
+  signing transcript. The resources remember part of the transcript, so some mixes are
+  rejected (see "Transcript checks" below); keeping the rest consistent is the caller's
+  responsibility.
 
     1. `pubkey_agg/1` - every signer passes the same list of individual full public keys
        (33-byte compressed or 65-byte uncompressed) **in the same order**. The order changes
@@ -18,8 +19,9 @@ defmodule Secp256k1.MuSig do
     2. `nonce_gen/5` - each signer generates a fresh nonce pair for its own key. `pubkey` must
        be that signer's individual public key from the aggregated list, and the secret key
        later passed to `partial_sign/4` must derive it. Pass the secret key here when
-       available; a secret key that does not derive `pubkey` raises `ArgumentError`. Signers
-       then exchange the serialized public nonces.
+       available; a secret key that does not derive `pubkey` raises `ArgumentError`. Pass the
+       message and the cache (after all tweaks) too when they are already known, so
+       `partial_sign/4` can check them. Signers then exchange the serialized public nonces.
     3. `nonce_agg/1` - aggregate all signers' public nonces into one aggregate nonce.
     4. `nonce_process/3` - each signer creates a session from the aggregate nonce, the 32-byte
        message, and the key aggregation cache from step 1.
@@ -31,6 +33,31 @@ defmodule Secp256k1.MuSig do
     7. `partial_sig_agg/2` - aggregate the partial signatures with the session into a BIP340
        Schnorr signature that verifies against the aggregate x-only public key with
        `Secp256k1.Schnorr.valid?/3`.
+
+  ## Transcript checks
+
+  A session remembers the key aggregation cache and the message given to `nonce_process/3`.
+  A secret nonce remembers the public key given to `nonce_gen/5` and, when they were given,
+  the message and the cache. Caches are compared by value: a cache recomputed from the same
+  keys and tweaks matches.
+
+    * `partial_sign/4` returns an error and consumes the secret nonce when the cache is not
+      the session's (`{:error, "keyagg cache does not match session"}`), when the secret
+      nonce was generated for another cache
+      (`{:error, "secnonce was generated for a different keyagg cache"}`) or another message
+      (`{:error, "secnonce was generated for a different message"}`), or when the secret key
+      does not derive the secret nonce's public key
+      (`{:error, "secret key does not match secnonce public key"}`).
+    * `partial_sig_verify/5` returns `false` when the cache is not the session's.
+
+  Other transcript values are not cross-checked. The caller must still ensure that:
+
+    * the signer's public key is in the list passed to `pubkey_agg/1`;
+    * the aggregate nonce passed to `nonce_process/3` includes the signer's public nonce;
+    * the partial signatures passed to `partial_sig_agg/2` were made for that session (verify
+      each one with `partial_sig_verify/5` first);
+    * the message and cache match the transcript when `nonce_gen/5` received `nil` for them.
+      Pass both to `nonce_gen/5` whenever they are known.
 
   ## Resources
 
@@ -99,8 +126,9 @@ defmodule Secp256k1.MuSig do
   @doc """
   Aggregates individual full public keys.
 
-  All signers must pass the same keys in the same order. X-only or unparsable public keys
-  raise `ArgumentError`.
+  All signers must pass the same keys in the same order. The guard checks only that the list
+  is non-empty: elements that are not binaries, x-only keys, and unparsable public keys raise
+  `ArgumentError`.
 
   Returns the aggregated x-only public key and a key aggregation cache resource.
   """
@@ -120,11 +148,11 @@ defmodule Secp256k1.MuSig do
   @doc """
   Applies a plain EC tweak to the aggregated public key.
 
-  Returns a new cache and the tweaked full public key in compressed form. The input cache is
+  Returns the tweaked full public key in compressed form and a new cache. The input cache is
   not modified. Use the returned cache for the rest of the signing transcript.
   """
   @spec pubkey_ec_tweak_add(keyagg_cache(), Secp256k1.tweak()) ::
-          {:ok, keyagg_cache(), Secp256k1.compressed_pubkey()}
+          {:ok, Secp256k1.compressed_pubkey(), keyagg_cache()}
           | {:error, binary() | :allocation_failed}
   def pubkey_ec_tweak_add(cache, tweak) when is_reference(cache) and is_tweak(tweak),
     do: Secp256k1.NIF.musig_pubkey_ec_tweak_add(cache, tweak)
@@ -132,11 +160,11 @@ defmodule Secp256k1.MuSig do
   @doc """
   Applies an x-only tweak to the aggregated public key.
 
-  Returns a new cache and the tweaked full public key in compressed form. The input cache is
+  Returns the tweaked full public key in compressed form and a new cache. The input cache is
   not modified. Use the returned cache for the rest of the signing transcript.
   """
   @spec pubkey_xonly_tweak_add(keyagg_cache(), Secp256k1.tweak()) ::
-          {:ok, keyagg_cache(), Secp256k1.compressed_pubkey()}
+          {:ok, Secp256k1.compressed_pubkey(), keyagg_cache()}
           | {:error, binary() | :allocation_failed}
   def pubkey_xonly_tweak_add(cache, tweak) when is_reference(cache) and is_tweak(tweak),
     do: Secp256k1.NIF.musig_pubkey_xonly_tweak_add(cache, tweak)
@@ -152,11 +180,14 @@ defmodule Secp256k1.MuSig do
     secret key later passed to `partial_sign/4` must derive it. Unparsable keys raise
     `ArgumentError`.
   - `msg`: (Optional) The 32-byte message that will be signed, if already known.
-  - `cache`: (Optional) The key aggregation cache of this signing transcript.
+  - `cache`: (Optional) The key aggregation cache of this signing transcript, after all tweaks.
   - `extra`: (Optional) 32 bytes of extra input for nonce derivation.
 
-  Returns a secret nonce resource bound to `pubkey` and a serialized public nonce. Call this for
-  every signing attempt; never reuse a secret nonce.
+  Returns a secret nonce resource and a serialized public nonce. The secret nonce is bound to
+  `pubkey` and, when given, to `msg` and `cache`: `partial_sign/4` rejects a session for
+  another message or another cache. With `nil`, that value is not checked, so pass `msg` and
+  `cache` whenever they are known. Call this for every signing attempt; never reuse a secret
+  nonce.
   """
   @spec nonce_gen(
           Secp256k1.seckey() | nil,
@@ -176,7 +207,8 @@ defmodule Secp256k1.MuSig do
   @doc """
   Aggregates the public nonces of all signers.
 
-  Unparsable public nonces raise `ArgumentError`.
+  The guard checks only that the list is non-empty: elements that are not 66-byte binaries,
+  and unparsable public nonces, raise `ArgumentError`.
   """
   @spec nonce_agg([pubnonce()]) :: aggnonce() | {:error, binary() | :allocation_failed}
   def nonce_agg(pubnonces) when is_list(pubnonces) and pubnonces != [],
@@ -199,14 +231,21 @@ defmodule Secp256k1.MuSig do
 
   `secnonce` must come from this signer's `nonce_gen/5` call, `seckey` must derive the public
   key passed to that call, and `cache` and `session` must belong to the same signing
-  transcript.
+  transcript. See "Transcript checks" in the module documentation for what is checked.
 
-  Calls that raise `ArgumentError` (an invalid secret scalar, or resources of the wrong kind)
-  do not consume the nonce. Any other call consumes it, from whichever process makes it: the
-  nonce is marked used and erased even when signing fails. A secret key whose public key
-  differs from the one bound to the nonce returns
-  `{:error, "secret key does not match secnonce public key"}`, and every later call with the
-  same nonce returns `{:error, "nonce already used"}`.
+  An invalid secret scalar or a resource of the wrong kind raises `ArgumentError` without
+  consuming the nonce. Any call that returns consumes it, from whichever process makes it:
+  the nonce is marked used and erased even when signing fails. These errors are returned:
+
+    * `{:error, "keyagg cache does not match session"}` - `cache` differs from the cache
+      given to `nonce_process/3`.
+    * `{:error, "secnonce was generated for a different keyagg cache"}` - `nonce_gen/5`
+      received a different cache.
+    * `{:error, "secnonce was generated for a different message"}` - `nonce_gen/5` received
+      a message other than the session's.
+    * `{:error, "secret key does not match secnonce public key"}` - `seckey` does not derive
+      the public key given to `nonce_gen/5`.
+    * `{:error, "nonce already used"}` - every call after the nonce was consumed.
   """
   @spec partial_sign(secnonce(), Secp256k1.seckey(), keyagg_cache(), session()) ::
           partial_sig() | {:error, binary() | :allocation_failed}
@@ -226,8 +265,9 @@ defmodule Secp256k1.MuSig do
   - `cache`: The key aggregation cache of this signing transcript.
   - `session`: The session returned by `nonce_process/3` for this signing transcript.
 
-  Returns `false` when the partial signature does not verify. Unparsable partial signatures,
-  public nonces, or public keys raise `ArgumentError`.
+  Returns `false` when the partial signature does not verify, or when `cache` differs from
+  the cache given to `nonce_process/3` for `session`. Unparsable partial signatures, public
+  nonces, or public keys raise `ArgumentError`.
   """
   @spec partial_sig_verify(
           partial_sig(),
@@ -245,8 +285,10 @@ defmodule Secp256k1.MuSig do
   @doc """
   Aggregates partial signatures into the final BIP340 Schnorr signature.
 
-  Unparsable partial signatures raise `ArgumentError`. Aggregation does not verify partial
-  signatures; use `partial_sig_verify/5` first.
+  The guard checks only that the list is non-empty: elements that are not 32-byte binaries,
+  and unparsable partial signatures, raise `ArgumentError`. Aggregation does not verify
+  partial signatures or check that they belong to `session`; use `partial_sig_verify/5`
+  first.
   """
   @spec partial_sig_agg(session(), [partial_sig()]) ::
           Secp256k1.schnorr_sig() | {:error, binary() | :allocation_failed}

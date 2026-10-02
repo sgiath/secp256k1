@@ -2,6 +2,8 @@
 
 #include <string.h>
 
+#include <secp256k1_preallocated.h>
+
 #if defined(_MSC_VER)
 #include <Windows.h>
 #define SECP256K1_NIF_THREAD_LOCAL __declspec(thread)
@@ -88,7 +90,7 @@ secp256k1_nif_state *
 secp256k1_nif_state_create(void)
 {
   secp256k1_nif_state *state = NULL;
-  unsigned char randomize[32] = {0};
+  unsigned char randomize[CONTEXT_SEED_SIZE] = {0};
   int success = 0;
 
   state = enif_alloc(sizeof(*state));
@@ -97,7 +99,20 @@ secp256k1_nif_state_create(void)
   }
   memset(state, 0, sizeof(*state));
 
-  state->ctx = secp256k1_context_create(SECP256K1_CONTEXT_NONE);
+  /*
+   * Allocate the context with enif_alloc so that running out of memory fails
+   * the load instead of aborting the VM (secp256k1_context_create aborts).
+   */
+  state->ctx_memory = enif_alloc(secp256k1_context_preallocated_size(SECP256K1_CONTEXT_NONE));
+  if (!state->ctx_memory) {
+    goto cleanup;
+  }
+  /*
+   * Upstream runs its self-test here and reports a failure through the default
+   * error callback, which aborts: a library failing its self-test is
+   * miscompiled and must not be used.
+   */
+  state->ctx = secp256k1_context_preallocated_create(state->ctx_memory, SECP256K1_CONTEXT_NONE);
   if (!state->ctx) {
     goto cleanup;
   }
@@ -128,7 +143,10 @@ secp256k1_nif_state_destroy(secp256k1_nif_state *state)
     return;
   }
   if (state->ctx) {
-    secp256k1_context_destroy(state->ctx);
+    secp256k1_context_preallocated_destroy(state->ctx);
+  }
+  if (state->ctx_memory) {
+    enif_free(state->ctx_memory);
   }
   enif_free(state);
 }
@@ -136,7 +154,8 @@ secp256k1_nif_state_destroy(secp256k1_nif_state *state)
 ERL_NIF_TERM
 allocation_failed(ErlNifEnv *env)
 {
-  return enif_make_tuple2(env,
+  return enif_make_tuple2(
+    env,
     enif_make_atom(env, "error"),
     enif_make_atom(env, "allocation_failed")
   );

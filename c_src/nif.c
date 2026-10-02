@@ -22,14 +22,13 @@ guard_result(ErlNifEnv *env, ERL_NIF_TERM result)
   return error_result(env, "libsecp256k1 internal error");
 }
 
-#define GUARDED_NIF(name)                                                     \
-  static ERL_NIF_TERM                                                         \
-  guarded_##name(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])         \
-  {                                                                           \
-    ERL_NIF_TERM result;                                                      \
-    callback_flags_clear();                                                   \
-    result = secp256k1_nif_##name(env, argc, argv);                           \
-    return guard_result(env, result);                                         \
+#define GUARDED_NIF(name)                                                                 \
+  static ERL_NIF_TERM guarded_##name(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) \
+  {                                                                                       \
+    ERL_NIF_TERM result;                                                                  \
+    callback_flags_clear();                                                               \
+    result = secp256k1_nif_##name(env, argc, argv);                                       \
+    return guard_result(env, result);                                                     \
   }
 
 GUARDED_NIF(ecdsa_compressed_pubkey)
@@ -115,8 +114,7 @@ load(ErlNifEnv *env, void **priv_data, ERL_NIF_TERM load_info)
     return -1;
   }
 
-  if (!musig_open_resource_types(env, state) ||
-      callback_illegal_fired() ||
+  if (!musig_open_resource_types(env, state) || callback_illegal_fired() ||
       callback_internal_fired()) {
     secp256k1_nif_state_destroy(state);
     return -1;

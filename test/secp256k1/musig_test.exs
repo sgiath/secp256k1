@@ -83,7 +83,7 @@ defmodule Secp256k1.MuSigTest do
     agg_pubkey = MuSig.pubkey_get(cache)
     tweak = :crypto.hash(:sha256, "ec tweak")
 
-    assert {:ok, tweaked_cache, tweaked_pubkey} = MuSig.pubkey_ec_tweak_add(cache, tweak)
+    assert {:ok, tweaked_pubkey, tweaked_cache} = MuSig.pubkey_ec_tweak_add(cache, tweak)
     assert tweaked_pubkey == Secp256k1.ec_pubkey_tweak_add(agg_pubkey, tweak)
     assert MuSig.pubkey_get(tweaked_cache) == tweaked_pubkey
     assert MuSig.pubkey_get(cache) == agg_pubkey
@@ -99,7 +99,7 @@ defmodule Secp256k1.MuSigTest do
     {:ok, expected_xonly_pubkey, parity} =
       Secp256k1.xonly_pubkey_tweak_add(agg_xonly_pubkey, tweak)
 
-    assert {:ok, tweaked_cache, tweaked_pubkey} = MuSig.pubkey_xonly_tweak_add(cache, tweak)
+    assert {:ok, tweaked_pubkey, tweaked_cache} = MuSig.pubkey_xonly_tweak_add(cache, tweak)
     assert tweaked_pubkey == <<2 + parity, expected_xonly_pubkey::binary>>
     assert MuSig.pubkey_get(tweaked_cache) == tweaked_pubkey
     assert MuSig.pubkey_get(cache) == agg_pubkey
@@ -110,9 +110,9 @@ defmodule Secp256k1.MuSigTest do
     msg = :crypto.strong_rand_bytes(32)
     pubkeys = Enum.map(signers, & &1.pubkey)
     {:ok, _agg_xonly_pubkey, cache} = MuSig.pubkey_agg(pubkeys)
-    {:ok, cache, _pubkey} = MuSig.pubkey_ec_tweak_add(cache, :crypto.hash(:sha256, "ec tweak"))
+    {:ok, _pubkey, cache} = MuSig.pubkey_ec_tweak_add(cache, :crypto.hash(:sha256, "ec tweak"))
 
-    {:ok, cache, <<_prefix, tweaked_xonly_pubkey::binary>>} =
+    {:ok, <<_prefix, tweaked_xonly_pubkey::binary>>, cache} =
       MuSig.pubkey_xonly_tweak_add(cache, :crypto.hash(:sha256, "x-only tweak"))
 
     signature = sign_with(signers, msg, cache)
@@ -158,9 +158,160 @@ defmodule Secp256k1.MuSigTest do
              MuSig.partial_sign(secnonce, signer.seckey, cache, session)
   end
 
-  test "partial_sig_verify returns false when signature, signer, or session do not match" do
+  test "partial_sign with a cache other than the session's consumes the nonce" do
+    signer = single_signer()
+    msg = :crypto.strong_rand_bytes(32)
+    {:ok, secnonce, pubnonce} = MuSig.nonce_gen(signer.seckey, signer.pubkey, msg, nil, nil)
+    session = session_for([pubnonce], msg, signer.cache)
+
+    assert {:error, "keyagg cache does not match session"} =
+             MuSig.partial_sign(secnonce, signer.seckey, signer.other_cache, session)
+
+    assert {:error, "nonce already used"} =
+             MuSig.partial_sign(secnonce, signer.seckey, signer.cache, session)
+  end
+
+  test "partial_sign rejects a session for a message other than the secnonce's" do
+    signer = single_signer()
+    nonce_msg = :crypto.strong_rand_bytes(32)
+    session_msg = :crypto.hash(:sha256, nonce_msg)
+
+    {:ok, secnonce, pubnonce} =
+      MuSig.nonce_gen(signer.seckey, signer.pubkey, nonce_msg, signer.cache, nil)
+
+    session = session_for([pubnonce], session_msg, signer.cache)
+
+    assert {:error, "secnonce was generated for a different message"} =
+             MuSig.partial_sign(secnonce, signer.seckey, signer.cache, session)
+
+    assert {:error, "nonce already used"} =
+             MuSig.partial_sign(secnonce, signer.seckey, signer.cache, session)
+  end
+
+  test "partial_sign rejects a cache other than the secnonce's" do
+    signer = single_signer()
+    msg = :crypto.strong_rand_bytes(32)
+
+    {:ok, secnonce, pubnonce} =
+      MuSig.nonce_gen(signer.seckey, signer.pubkey, msg, signer.cache, nil)
+
+    session = session_for([pubnonce], msg, signer.other_cache)
+
+    assert {:error, "secnonce was generated for a different keyagg cache"} =
+             MuSig.partial_sign(secnonce, signer.seckey, signer.other_cache, session)
+
+    assert {:error, "nonce already used"} =
+             MuSig.partial_sign(secnonce, signer.seckey, signer.other_cache, session)
+  end
+
+  test "an independently recomputed equal cache matches the transcript" do
+    signers = signers(2)
+    pubkeys = Enum.map(signers, & &1.pubkey)
+    msg = :crypto.strong_rand_bytes(32)
+    {:ok, agg_xonly_pubkey, cache} = MuSig.pubkey_agg(pubkeys)
+    {:ok, ^agg_xonly_pubkey, recomputed_cache} = MuSig.pubkey_agg(pubkeys)
+
+    nonces =
+      Enum.map(signers, fn signer ->
+        {:ok, secnonce, pubnonce} = MuSig.nonce_gen(signer.seckey, signer.pubkey, msg, cache, nil)
+        {secnonce, pubnonce}
+      end)
+
+    session =
+      nonces
+      |> Enum.map(fn {_secnonce, pubnonce} -> pubnonce end)
+      |> session_for(msg, recomputed_cache)
+
+    partial_sigs =
+      Enum.zip_with(signers, nonces, fn signer, {secnonce, pubnonce} ->
+        partial_sig = MuSig.partial_sign(secnonce, signer.seckey, cache, session)
+
+        assert MuSig.partial_sig_verify(
+                 partial_sig,
+                 pubnonce,
+                 signer.pubkey,
+                 recomputed_cache,
+                 session
+               )
+
+        partial_sig
+      end)
+
+    signature = MuSig.partial_sig_agg(session, partial_sigs)
+    assert Schnorr.valid?(signature, msg, agg_xonly_pubkey)
+  end
+
+  test "partial_sign raises for wrong-kind resources without consuming the nonce" do
+    signer = single_signer()
+    msg = :crypto.strong_rand_bytes(32)
+
+    {:ok, secnonce, pubnonce} =
+      MuSig.nonce_gen(signer.seckey, signer.pubkey, msg, signer.cache, nil)
+
+    session = session_for([pubnonce], msg, signer.cache)
+    %{seckey: seckey, cache: cache} = signer
+
+    swapped_args = [
+      [session, seckey, cache, session],
+      [cache, seckey, cache, session],
+      [secnonce, seckey, session, session],
+      [secnonce, seckey, secnonce, session],
+      [secnonce, seckey, cache, cache],
+      [secnonce, seckey, cache, secnonce]
+    ]
+
+    for args <- swapped_args do
+      assert_raise ArgumentError, fn -> apply(MuSig, :partial_sign, args) end
+    end
+
+    partial_sig = MuSig.partial_sign(secnonce, seckey, cache, session)
+    assert MuSig.partial_sig_verify(partial_sig, pubnonce, signer.pubkey, cache, session)
+  end
+
+  test "partial_sign raises for invalid secret-key scalars without consuming the nonce" do
+    signer = single_signer()
+    msg = :crypto.strong_rand_bytes(32)
+
+    {:ok, secnonce, pubnonce} =
+      MuSig.nonce_gen(signer.seckey, signer.pubkey, msg, signer.cache, nil)
+
+    session = session_for([pubnonce], msg, signer.cache)
+    curve_order = d("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141")
+
+    for seckey <- [<<0::256>>, curve_order] do
+      assert_raise ArgumentError, fn ->
+        MuSig.partial_sign(secnonce, seckey, signer.cache, session)
+      end
+    end
+
+    partial_sig = MuSig.partial_sign(secnonce, signer.seckey, signer.cache, session)
+    assert MuSig.partial_sig_verify(partial_sig, pubnonce, signer.pubkey, signer.cache, session)
+  end
+
+  test "nonce_gen optional inputs each produce a verifying signature" do
+    signers = signers(2)
+    msg = :crypto.strong_rand_bytes(32)
+    pubkeys = Enum.map(signers, & &1.pubkey)
+    {:ok, agg_xonly_pubkey, cache} = MuSig.pubkey_agg(pubkeys)
+    extra = :crypto.strong_rand_bytes(32)
+
+    variants = [
+      without_seckey: &MuSig.nonce_gen(nil, &1.pubkey, msg, cache, nil),
+      without_msg: &MuSig.nonce_gen(&1.seckey, &1.pubkey, nil, cache, nil),
+      without_cache: &MuSig.nonce_gen(&1.seckey, &1.pubkey, msg, nil, nil),
+      with_extra: &MuSig.nonce_gen(&1.seckey, &1.pubkey, msg, cache, extra)
+    ]
+
+    for {variant, nonce_gen} <- variants do
+      signature = sign_with(signers, msg, cache, nonce_gen)
+      assert Schnorr.valid?(signature, msg, agg_xonly_pubkey), "#{variant}"
+    end
+  end
+
+  test "partial_sig_verify returns false for a mismatched signature, signer, session, or cache" do
     [alice, bob] = signers(2)
     {:ok, _agg_xonly_pubkey, cache} = MuSig.pubkey_agg([alice.pubkey, bob.pubkey])
+    {:ok, _pubkey, other_cache} = MuSig.pubkey_ec_tweak_add(cache, :crypto.hash(:sha256, "tweak"))
     msg = :crypto.strong_rand_bytes(32)
 
     {:ok, alice_secnonce, alice_nonce} =
@@ -179,6 +330,9 @@ defmodule Secp256k1.MuSigTest do
     assert verify.(alice_sig, alice_nonce, bob.pubkey, session) == false
     assert verify.(alice_sig, bob_nonce, alice.pubkey, session) == false
     assert verify.(alice_sig, alice_nonce, alice.pubkey, other_msg_session) == false
+
+    assert MuSig.partial_sig_verify(alice_sig, alice_nonce, alice.pubkey, other_cache, session) ==
+             false
   end
 
   test "nonce reuse protection" do
@@ -190,8 +344,8 @@ defmodule Secp256k1.MuSigTest do
     aggnonce = MuSig.nonce_agg([pubnonce])
     session = MuSig.nonce_process(aggnonce, msg, cache)
 
-    # First sign should succeed
-    _sig = MuSig.partial_sign(secnonce, seckey, cache, session)
+    sig = MuSig.partial_sign(secnonce, seckey, cache, session)
+    assert MuSig.partial_sig_verify(sig, pubnonce, pubkey, cache, session)
 
     # Second sign with same nonce resource should fail
     assert {:error, "nonce already used"} = MuSig.partial_sign(secnonce, seckey, cache, session)
@@ -231,7 +385,8 @@ defmodule Secp256k1.MuSigTest do
     successful_signatures = Enum.filter(results, &(is_binary(&1) and byte_size(&1) == 32))
     nonce_reuse_errors = Enum.filter(results, &match?({:error, "nonce already used"}, &1))
 
-    assert length(successful_signatures) == 1
+    assert [signature] = successful_signatures
+    assert MuSig.partial_sig_verify(signature, pubnonce, pubkey, cache, session)
     assert length(nonce_reuse_errors) == 31
     refute {:error, "secp256k1_musig_partial_sign failed"} in results
   end
@@ -394,17 +549,20 @@ defmodule Secp256k1.MuSigTest do
   end
 
   defp sign_with(signers, msg, cache) do
+    sign_with(signers, msg, cache, &MuSig.nonce_gen(&1.seckey, &1.pubkey, msg, cache, nil))
+  end
+
+  defp sign_with(signers, msg, cache, nonce_gen) do
     nonces =
       Enum.map(signers, fn signer ->
-        {:ok, secnonce, pubnonce} = MuSig.nonce_gen(signer.seckey, signer.pubkey, msg, cache, nil)
+        {:ok, secnonce, pubnonce} = nonce_gen.(signer)
         {secnonce, pubnonce}
       end)
 
     session =
       nonces
       |> Enum.map(fn {_secnonce, pubnonce} -> pubnonce end)
-      |> MuSig.nonce_agg()
-      |> MuSig.nonce_process(msg, cache)
+      |> session_for(msg, cache)
 
     partial_sigs =
       Enum.zip_with(signers, nonces, fn signer, {secnonce, pubnonce} ->
@@ -414,6 +572,21 @@ defmodule Secp256k1.MuSigTest do
       end)
 
     MuSig.partial_sig_agg(session, partial_sigs)
+  end
+
+  # One signer whose key is the whole key set. `other_cache` is a tweaked cache for the same key:
+  # a valid cache whose bytes differ from `cache`.
+  defp single_signer do
+    {seckey, pubkey} = Secp256k1.keypair(:compressed)
+    {:ok, _agg_xonly_pubkey, cache} = MuSig.pubkey_agg([pubkey])
+    {:ok, _pubkey, other_cache} = MuSig.pubkey_ec_tweak_add(cache, :crypto.hash(:sha256, "tweak"))
+    %{seckey: seckey, pubkey: pubkey, cache: cache, other_cache: other_cache}
+  end
+
+  defp session_for(pubnonces, msg, cache) do
+    pubnonces
+    |> MuSig.nonce_agg()
+    |> MuSig.nonce_process(msg, cache)
   end
 
   defp signing_state do

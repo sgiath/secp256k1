@@ -42,5 +42,12 @@ in
       enable = true;
       settings.print-width = 98;
     };
+    # First-party C only; c_src/secp256k1/ is extracted upstream code.
+    clang-format = {
+      enable = true;
+      package = pkgs.clang-tools;
+      types_or = [ "c" ];
+      files = "^c_src/[^/]+\\.[ch]$";
+    };
   };
 }

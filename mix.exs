@@ -53,7 +53,11 @@ defmodule Secp256k1.MixProject do
       {:styler, "~> 1.12", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.40", only: [:dev], runtime: false},
       {:mix_audit, "~> 2.1", only: [:dev], runtime: false},
-      {:mix_test_watch, "~> 1.4", only: [:dev], runtime: false}
+      {:mix_test_watch, "~> 1.4", only: [:dev], runtime: false},
+
+      # Test vectors (Elixir's built-in JSON needs 1.18). Also in :dev because credo
+      # requires it there.
+      {:jason, "~> 1.4", only: [:dev, :test]}
     ]
   end
 

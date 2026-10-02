@@ -6,8 +6,31 @@
 #include <erl_nif.h>
 #include <secp256k1.h>
 
+/* Fixed sizes, in bytes, of values crossing the NIF boundary. */
+#define SECKEY_SIZE 32
+#define HASH_SIZE 32
+#define TWEAK_SIZE 32
+#define XONLY_PUBKEY_SIZE 32
+#define COMPRESSED_PUBKEY_SIZE 33
+#define UNCOMPRESSED_PUBKEY_SIZE 65
+#define ECDSA_COMPACT_SIG_SIZE 64
+#define ECDSA_DER_SIG_MIN_SIZE 8
+#define ECDSA_DER_SIG_MAX_SIZE 72
+#define ECDSA_NONCE_DATA_SIZE 32
+#define SCHNORR_SIG_SIZE 64
+#define SCHNORR_AUX_RAND_SIZE 32
+#define ECDH_SHARED_SECRET_SIZE 32
+#define CONTEXT_SEED_SIZE 32
+#define MUSIG_PUBNONCE_SIZE 66
+#define MUSIG_AGGNONCE_SIZE 66
+#define MUSIG_PARTIAL_SIG_SIZE 32
+#define MUSIG_SESSION_SECRAND_SIZE 32
+#define MUSIG_EXTRA_INPUT_SIZE 32
+
 typedef struct {
+  /* Context created in `ctx_memory`, which this state owns (enif_alloc). */
   secp256k1_context *ctx;
+  void *ctx_memory;
   ErlNifResourceType *keyagg_cache_rt;
   ErlNifResourceType *session_rt;
   ErlNifResourceType *secnonce_rt;

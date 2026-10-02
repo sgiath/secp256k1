@@ -16,9 +16,9 @@ is_nil(ErlNifEnv *env, ERL_NIF_TERM term)
   return enif_is_identical(term, enif_make_atom(env, "nil"));
 }
 
-/* Accepts nil (stores NULL) or a binary of exactly 32 bytes. */
+/* Accepts nil (stores NULL) or a binary of exactly `size` bytes. */
 static int
-get_optional_bytes32(ErlNifEnv *env, ERL_NIF_TERM term, const unsigned char **data)
+get_optional_binary(ErlNifEnv *env, ERL_NIF_TERM term, size_t size, const unsigned char **data)
 {
   ErlNifBinary bin;
 
@@ -26,7 +26,7 @@ get_optional_bytes32(ErlNifEnv *env, ERL_NIF_TERM term, const unsigned char **da
     *data = NULL;
     return 1;
   }
-  if (!enif_inspect_binary(env, term, &bin) || bin.size != 32) {
+  if (!enif_inspect_binary(env, term, &bin) || bin.size != size) {
     return 0;
   }
   *data = bin.data;
@@ -54,11 +54,11 @@ parse_nonce_gen_input(ErlNifEnv *env, const ERL_NIF_TERM argv[], nonce_gen_input
   ErlNifBinary bin_pubkey;
   keyagg_cache_wrapper *cache_wrapper;
 
-  if (!get_optional_bytes32(env, argv[0], &input->seckey) ||
+  if (!get_optional_binary(env, argv[0], SECKEY_SIZE, &input->seckey) ||
       !enif_inspect_binary(env, argv[1], &bin_pubkey) ||
       !secp256k1_ec_pubkey_parse(ctx, &input->pubkey, bin_pubkey.data, bin_pubkey.size) ||
-      !get_optional_bytes32(env, argv[2], &input->msg) ||
-      !get_optional_bytes32(env, argv[4], &input->extra)) {
+      !get_optional_binary(env, argv[2], HASH_SIZE, &input->msg) ||
+      !get_optional_binary(env, argv[4], MUSIG_EXTRA_INPUT_SIZE, &input->extra)) {
     return 0;
   }
 
@@ -78,10 +78,10 @@ nonce_gen_result(
   ErlNifEnv *env,
   const secp256k1_musig_secnonce *secnonce,
   const secp256k1_musig_pubnonce *pubnonce,
-  const secp256k1_pubkey *pubkey
+  const nonce_gen_input *input
 )
 {
-  unsigned char serialized_pubnonce[MUSIG_PUBNONCE_SERIALIZED_SIZE];
+  unsigned char serialized_pubnonce[MUSIG_PUBNONCE_SIZE];
   ERL_NIF_TERM pubnonce_term;
   ERL_NIF_TERM secnonce_term;
 
@@ -90,7 +90,14 @@ nonce_gen_result(
   }
 
   if (!make_binary(env, serialized_pubnonce, sizeof(serialized_pubnonce), &pubnonce_term) ||
-      !make_secnonce_resource(env, secnonce, pubkey, &secnonce_term)) {
+      !make_secnonce_resource(
+        env,
+        secnonce,
+        &input->pubkey,
+        input->msg,
+        input->cache,
+        &secnonce_term
+      )) {
     return allocation_failed(env);
   }
 
@@ -103,7 +110,7 @@ secp256k1_nif_musig_nonce_gen(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
   nonce_gen_input input;
   secp256k1_musig_secnonce secnonce;
   secp256k1_musig_pubnonce pubnonce;
-  unsigned char session_secrand[32];
+  unsigned char session_secrand[MUSIG_SESSION_SECRAND_SIZE];
   ERL_NIF_TERM result;
 
   (void)argc;
@@ -113,26 +120,28 @@ secp256k1_nif_musig_nonce_gen(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
   }
 
   if (!fill_random(session_secrand, sizeof(session_secrand))) {
-    secure_erase(session_secrand, sizeof(session_secrand));
-    return error_result(env, "RNG failed");
+    result = error_result(env, "RNG failed");
+    goto cleanup;
   }
 
   if (!secp256k1_musig_nonce_gen(
-      nif_ctx(env),
-      &secnonce,
-      &pubnonce,
-      session_secrand,
-      input.seckey,
-      &input.pubkey,
-      input.msg,
-      input.cache,
-      input.extra
-    )) {
+        nif_ctx(env),
+        &secnonce,
+        &pubnonce,
+        session_secrand,
+        input.seckey,
+        &input.pubkey,
+        input.msg,
+        input.cache,
+        input.extra
+      )) {
     result = error_result(env, "secp256k1_musig_nonce_gen failed");
-  } else {
-    result = nonce_gen_result(env, &secnonce, &pubnonce, &input.pubkey);
+    goto cleanup;
   }
 
+  result = nonce_gen_result(env, &secnonce, &pubnonce, &input);
+
+cleanup:
   secure_erase(session_secrand, sizeof(session_secrand));
   secure_erase(&secnonce, sizeof(secnonce));
   return result;
@@ -153,9 +162,8 @@ parse_pubnonces(
   unsigned int i;
 
   for (i = 0; i < count; i++) {
-    if (!enif_get_list_cell(env, list, &head, &list) ||
-        !enif_inspect_binary(env, head, &bin) ||
-        bin.size != MUSIG_PUBNONCE_SERIALIZED_SIZE ||
+    if (!enif_get_list_cell(env, list, &head, &list) || !enif_inspect_binary(env, head, &bin) ||
+        bin.size != MUSIG_PUBNONCE_SIZE ||
         !secp256k1_musig_pubnonce_parse(ctx, &nonces[i], bin.data)) {
       return 0;
     }
@@ -172,8 +180,9 @@ secp256k1_nif_musig_nonce_agg(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
   unsigned int n_nonces;
   secp256k1_musig_pubnonce *nonces;
   const secp256k1_musig_pubnonce **nonce_ptrs;
+  void *elems;
   secp256k1_musig_aggnonce aggnonce;
-  unsigned char serialized_aggnonce[MUSIG_AGGNONCE_SERIALIZED_SIZE];
+  unsigned char serialized_aggnonce[MUSIG_AGGNONCE_SIZE];
   ERL_NIF_TERM result;
   int parsed;
   int aggregated = 0;
@@ -184,20 +193,17 @@ secp256k1_nif_musig_nonce_agg(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
     return enif_make_badarg(env);
   }
 
-  nonces = musig_alloc_array(n_nonces, sizeof(*nonces));
-  nonce_ptrs = musig_alloc_array(n_nonces, sizeof(*nonce_ptrs));
-  if (!nonces || !nonce_ptrs) {
-    if (nonces) enif_free(nonces);
-    if (nonce_ptrs) enif_free(nonce_ptrs);
+  nonce_ptrs = musig_alloc_list(n_nonces, sizeof(*nonce_ptrs), sizeof(*nonces), &elems);
+  if (!nonce_ptrs) {
     return allocation_failed(env);
   }
+  nonces = elems;
 
   parsed = parse_pubnonces(env, ctx, argv[0], n_nonces, nonces, nonce_ptrs);
   if (parsed) {
     aggregated = secp256k1_musig_nonce_agg(ctx, &aggnonce, nonce_ptrs, n_nonces);
   }
 
-  enif_free(nonces);
   enif_free(nonce_ptrs);
 
   if (!parsed) {
@@ -230,10 +236,9 @@ secp256k1_nif_musig_nonce_process(ErlNifEnv *env, int argc, const ERL_NIF_TERM a
   (void)argc;
 
   if (!enif_inspect_binary(env, argv[0], &bin_aggnonce) ||
-      bin_aggnonce.size != MUSIG_AGGNONCE_SERIALIZED_SIZE ||
+      bin_aggnonce.size != MUSIG_AGGNONCE_SIZE ||
       !secp256k1_musig_aggnonce_parse(ctx, &aggnonce, bin_aggnonce.data) ||
-      !enif_inspect_binary(env, argv[1], &bin_msg) ||
-      bin_msg.size != 32 ||
+      !enif_inspect_binary(env, argv[1], &bin_msg) || bin_msg.size != HASH_SIZE ||
       !get_keyagg_cache(env, argv[2], &cache)) {
     return enif_make_badarg(env);
   }
@@ -242,7 +247,7 @@ secp256k1_nif_musig_nonce_process(ErlNifEnv *env, int argc, const ERL_NIF_TERM a
     return error_result(env, "secp256k1_musig_nonce_process failed");
   }
 
-  if (!make_session_resource(env, &session, &session_term)) {
+  if (!make_session_resource(env, &session, &cache->cache, bin_msg.data, &session_term)) {
     return allocation_failed(env);
   }
 

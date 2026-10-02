@@ -80,6 +80,8 @@ int
 make_session_resource(
   ErlNifEnv *env,
   const secp256k1_musig_session *session,
+  const secp256k1_musig_keyagg_cache *cache,
+  const unsigned char *msg,
   ERL_NIF_TERM *term
 )
 {
@@ -91,6 +93,8 @@ make_session_resource(
   }
 
   memcpy(&wrapper->session, session, sizeof(wrapper->session));
+  memcpy(&wrapper->cache, cache, sizeof(wrapper->cache));
+  memcpy(wrapper->msg, msg, sizeof(wrapper->msg));
   *term = enif_make_resource(env, wrapper);
   enif_release_resource(wrapper);
   return 1;
@@ -101,6 +105,8 @@ make_secnonce_resource(
   ErlNifEnv *env,
   const secp256k1_musig_secnonce *nonce,
   const secp256k1_pubkey *pubkey,
+  const unsigned char *msg,
+  const secp256k1_musig_keyagg_cache *cache,
   ERL_NIF_TERM *term
 )
 {
@@ -120,6 +126,21 @@ make_secnonce_resource(
 
   memcpy(&wrapper->nonce, nonce, sizeof(wrapper->nonce));
   memcpy(&wrapper->pubkey, pubkey, sizeof(wrapper->pubkey));
+
+  wrapper->has_msg = msg != NULL;
+  if (msg) {
+    memcpy(wrapper->msg, msg, sizeof(wrapper->msg));
+  } else {
+    memset(wrapper->msg, 0, sizeof(wrapper->msg));
+  }
+
+  wrapper->has_cache = cache != NULL;
+  if (cache) {
+    memcpy(&wrapper->cache, cache, sizeof(wrapper->cache));
+  } else {
+    memset(&wrapper->cache, 0, sizeof(wrapper->cache));
+  }
+
   *term = enif_make_resource(env, wrapper);
   enif_release_resource(wrapper);
   return 1;
@@ -161,11 +182,27 @@ get_secnonce(ErlNifEnv *env, ERL_NIF_TERM term, secnonce_wrapper **wrapper)
   return 1;
 }
 
-void *
-musig_alloc_array(unsigned int count, size_t size)
+int
+keyagg_cache_equal(const secp256k1_musig_keyagg_cache *a, const secp256k1_musig_keyagg_cache *b)
 {
-  if (count > SIZE_MAX / size) {
+  return memcmp(a->data, b->data, sizeof(a->data)) == 0;
+}
+
+void *
+musig_alloc_list(unsigned int count, size_t ptr_size, size_t elem_size, void **elems)
+{
+  unsigned char *block;
+
+  if (count > SIZE_MAX / (ptr_size + elem_size)) {
     return NULL;
   }
-  return enif_alloc((size_t)count * size);
+
+  block = enif_alloc((size_t)count * (ptr_size + elem_size));
+  if (!block) {
+    return NULL;
+  }
+
+  /* Pointers first keeps the element array pointer-aligned. */
+  *elems = block + (size_t)count * ptr_size;
+  return block;
 }

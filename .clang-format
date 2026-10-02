@@ -1,0 +1,44 @@
+---
+# Style for first-party C in c_src/*.c and c_src/*.h (not c_src/secp256k1/).
+# Check: clang-format --dry-run --Werror c_src/*.c c_src/*.h
+BasedOnStyle: LLVM
+IndentWidth: 2
+ContinuationIndentWidth: 2
+ColumnLimit: 100
+UseTab: Never
+
+# Return type on its own line for definitions; function braces on their own
+# line; control-flow braces on the same line.
+BreakAfterReturnType: AllDefinitions
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+  AfterControlStatement: Never
+  AfterEnum: false
+  AfterStruct: false
+  AfterUnion: false
+  BeforeElse: false
+  SplitEmptyFunction: true
+
+# Calls and parameter lists that do not fit: one argument per line, closing
+# parenthesis on its own line.
+AlignAfterOpenBracket: BlockIndent
+BinPackArguments: false
+BinPackParameters: OnePerLine
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
+
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+BreakBeforeBinaryOperators: None
+PointerAlignment: Right
+IndentGotoLabels: false
+IndentPPDirectives: None
+AlignEscapedNewlines: Left
+MaxEmptyLinesToKeep: 1
+
+# Platform headers in random.h depend on include order.
+SortIncludes: Never
+IncludeBlocks: Preserve

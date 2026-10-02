@@ -18,8 +18,7 @@ parse_pubkeys(
   unsigned int i;
 
   for (i = 0; i < count; i++) {
-    if (!enif_get_list_cell(env, list, &head, &list) ||
-        !enif_inspect_binary(env, head, &bin) ||
+    if (!enif_get_list_cell(env, list, &head, &list) || !enif_inspect_binary(env, head, &bin) ||
         !secp256k1_ec_pubkey_parse(ctx, &pubkeys[i], bin.data, bin.size)) {
       return 0;
     }
@@ -36,7 +35,7 @@ pubkey_agg_result(
   const secp256k1_musig_keyagg_cache *cache
 )
 {
-  unsigned char serialized_agg_pk[32];
+  unsigned char serialized_agg_pk[XONLY_PUBKEY_SIZE];
   ERL_NIF_TERM agg_pk_term;
   ERL_NIF_TERM cache_term;
 
@@ -59,6 +58,7 @@ secp256k1_nif_musig_pubkey_agg(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv
   unsigned int n_pubkeys;
   secp256k1_pubkey *pubkeys;
   const secp256k1_pubkey **pubkey_ptrs;
+  void *elems;
   secp256k1_xonly_pubkey agg_pk;
   secp256k1_musig_keyagg_cache cache;
   int parsed;
@@ -70,20 +70,17 @@ secp256k1_nif_musig_pubkey_agg(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv
     return enif_make_badarg(env);
   }
 
-  pubkeys = musig_alloc_array(n_pubkeys, sizeof(*pubkeys));
-  pubkey_ptrs = musig_alloc_array(n_pubkeys, sizeof(*pubkey_ptrs));
-  if (!pubkeys || !pubkey_ptrs) {
-    if (pubkeys) enif_free(pubkeys);
-    if (pubkey_ptrs) enif_free(pubkey_ptrs);
+  pubkey_ptrs = musig_alloc_list(n_pubkeys, sizeof(*pubkey_ptrs), sizeof(*pubkeys), &elems);
+  if (!pubkey_ptrs) {
     return allocation_failed(env);
   }
+  pubkeys = elems;
 
   parsed = parse_pubkeys(env, ctx, argv[0], n_pubkeys, pubkeys, pubkey_ptrs);
   if (parsed) {
     aggregated = secp256k1_musig_pubkey_agg(ctx, &agg_pk, &cache, pubkey_ptrs, n_pubkeys);
   }
 
-  enif_free(pubkeys);
   enif_free(pubkey_ptrs);
 
   if (!parsed) {
@@ -103,10 +100,16 @@ secp256k1_nif_musig_pubkey_agg(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv
 static int
 compressed_pubkey_term(ErlNifEnv *env, const secp256k1_pubkey *pubkey, ERL_NIF_TERM *term)
 {
-  unsigned char serialized_pk[33];
+  unsigned char serialized_pk[COMPRESSED_PUBKEY_SIZE];
   size_t len = sizeof(serialized_pk);
 
-  if (!secp256k1_ec_pubkey_serialize(nif_ctx(env), serialized_pk, &len, pubkey, SECP256K1_EC_COMPRESSED)) {
+  if (!secp256k1_ec_pubkey_serialize(
+        nif_ctx(env),
+        serialized_pk,
+        &len,
+        pubkey,
+        SECP256K1_EC_COMPRESSED
+      )) {
     *term = error_result(env, "secp256k1_ec_pubkey_serialize failed");
     return 0;
   }
@@ -163,7 +166,7 @@ musig_pubkey_tweak_add(
   ERL_NIF_TERM pubkey_term;
 
   if (!get_keyagg_cache(env, argv[0], &cache_wrapper) ||
-      !enif_inspect_binary(env, argv[1], &bin_tweak) || bin_tweak.size != 32) {
+      !enif_inspect_binary(env, argv[1], &bin_tweak) || bin_tweak.size != TWEAK_SIZE) {
     return enif_make_badarg(env);
   }
   memcpy(&cache, &cache_wrapper->cache, sizeof(cache));
@@ -180,7 +183,7 @@ musig_pubkey_tweak_add(
     return allocation_failed(env);
   }
 
-  return enif_make_tuple3(env, enif_make_atom(env, "ok"), cache_term, pubkey_term);
+  return enif_make_tuple3(env, enif_make_atom(env, "ok"), pubkey_term, cache_term);
 }
 
 ERL_NIF_TERM

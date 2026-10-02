@@ -44,7 +44,9 @@ bundled copies may differ from the upstream bytes only as described under
 
 Only the `musig_key_agg_vector` and `musig_nonce_agg_vector` initializers of
 `vectors.h` are extracted. Every other vector set in that file (nonce
-generation, signing, tweaking, signature aggregation) is not bundled.
+generation, signing, tweaking, signature aggregation) is not taken from it;
+signing, tweaking, and signature aggregation come from the BIP-327 JSON files
+described below.
 
 - `source`: path of `vectors.h` inside the vendored libsecp256k1 tree.
 - C byte arrays become lowercase hex strings: `key_agg.pubkeys` (33 bytes,
@@ -70,3 +72,51 @@ generation, signing, tweaking, signature aggregation) is not bundled.
 Checked against the BIP-327 originals: pubkeys, tweaks, pubnonces, every case's
 index lists, x-only flags, and expected values match (hex compared
 case-insensitively).
+
+## MuSig2 BIP-327 signing (bip327_sign_verify.json, bip327_tweak.json, bip327_sig_agg.json)
+
+- Source: BIP-327 JSON vectors at bitcoin/bips commit
+  `1c6ac0c4cf1f39ea806b8594d6060b6d52fd1439` (latest commit touching
+  `bip-0327/vectors/` when retrieved; it includes the corrected
+  `verify_fail_test_cases` and `verify_error_test_cases` that the original
+  `87394eae` snapshot got wrong):
+  - `bip327_sign_verify.json`:
+    https://github.com/bitcoin/bips/blob/1c6ac0c4cf1f39ea806b8594d6060b6d52fd1439/bip-0327/vectors/sign_verify_vectors.json
+    (Raw: https://raw.githubusercontent.com/bitcoin/bips/1c6ac0c4cf1f39ea806b8594d6060b6d52fd1439/bip-0327/vectors/sign_verify_vectors.json,
+    Source SHA256 `692eecc101f3e515c29137f05031935e1210d2a01bab91e674eb0234f095c15c`)
+  - `bip327_tweak.json`:
+    https://github.com/bitcoin/bips/blob/1c6ac0c4cf1f39ea806b8594d6060b6d52fd1439/bip-0327/vectors/tweak_vectors.json
+    (Raw: https://raw.githubusercontent.com/bitcoin/bips/1c6ac0c4cf1f39ea806b8594d6060b6d52fd1439/bip-0327/vectors/tweak_vectors.json,
+    Source SHA256 `80ce6385ce062644ad1f4edcb9d4797f70ddb0b74769e4099f51b3c9e6ab4aff`)
+  - `bip327_sig_agg.json`:
+    https://github.com/bitcoin/bips/blob/1c6ac0c4cf1f39ea806b8594d6060b6d52fd1439/bip-0327/vectors/sig_agg_vectors.json
+    (Raw: https://raw.githubusercontent.com/bitcoin/bips/1c6ac0c4cf1f39ea806b8594d6060b6d52fd1439/bip-0327/vectors/sig_agg_vectors.json,
+    Source SHA256 `15f14c034fb2a5739d7ce638be94c5b37ea675a2e01159092dd93b59d69c3439`)
+- Conversion: re-indented by Prettier (2 spaces, short arrays on one line);
+  the parsed JSON is identical to the source. Hex stays uppercase as upstream.
+- Retrieved: 2026-10-02
+- License: BSD-3-Clause (BIP-327)
+
+### Coverage
+
+Tests use only the public `Secp256k1.MuSig` API, which accepts neither raw secret
+nonces nor injected nonce randomness. Partial signatures are therefore verified,
+not reproduced by signing. Not reachable, and skipped in
+`test/secp256k1/musig_vectors_test.exs`:
+
+- `sign_verify` valid cases with an empty or 38-byte message: the API takes
+  32-byte messages only.
+- `sign_verify` sign errors that need an injected secret nonce: the signer's
+  pubkey missing from the key list (optional in BIP-327; libsecp256k1 does not
+  check it) and an invalid secnonce.
+
+Exercised with a different outcome: `sign_verify` verify fail "Signature exceeds
+group size". The partial signature cannot be parsed, so `partial_sig_verify/5`
+raises `ArgumentError` instead of returning `false`; libsecp256k1's own vector
+harness also expects the parse to fail. The test asserts the raise.
+
+Not bundled: `nonce_gen_vectors.json` and `det_sign_vectors.json` need injected
+randomness or raw secret nonces, which the public API intentionally does not
+accept. `key_sort_vectors.json` has no public API counterpart (`pubkey_agg/1`
+does not sort). `key_agg_vectors.json` and `nonce_agg_vectors.json` are covered
+by `musig2.json`; they are byte-identical at `87394eae` and `1c6ac0c4`.
