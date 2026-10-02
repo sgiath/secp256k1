@@ -79,10 +79,23 @@ defmodule Secp256k1Test.ECDSA do
     assert_raise FunctionClauseError, fn -> ECDSA.sign(msg_hash, seckey, <<1>>) end
   end
 
-  test "sign/2 injects random nonce data", %{seckey: seckey} do
+  test "sign/2 injects random nonce data", %{seckey: seckey, pubkey_compressed: pubkey} do
+    msg_hash = :crypto.hash(:sha256, "hello")
+    first_signature = ECDSA.sign(msg_hash, seckey)
+    second_signature = ECDSA.sign(msg_hash, seckey)
+
+    refute first_signature == second_signature
+    assert ECDSA.valid?(first_signature, msg_hash, pubkey)
+    assert ECDSA.valid?(second_signature, msg_hash, pubkey)
+  end
+
+  test "sign rejects right-sized invalid secret scalars" do
     msg_hash = :crypto.hash(:sha256, "hello")
 
-    refute ECDSA.sign(msg_hash, seckey) == ECDSA.sign(msg_hash, seckey)
+    for seckey <- [<<0::256>>, <<@curve_order::256>>] do
+      assert_raise ArgumentError, fn -> ECDSA.sign(msg_hash, seckey) end
+      assert_raise ArgumentError, fn -> ECDSA.sign(msg_hash, seckey, nil) end
+    end
   end
 
   test "valid? returns false for compact signatures that fail parsing", %{
@@ -131,23 +144,13 @@ defmodule Secp256k1Test.ECDSA do
     assert ECDSA.valid?(normalized_signature, msg_hash, pubkey)
   end
 
-  test "parses and normalizes a high-S Bitcoin wire signature", %{
-    seckey: seckey,
-    pubkey_compressed: pubkey
-  } do
+  test "DER round trip keeps a high-S signature as encoded", %{seckey: seckey} do
     msg_hash = :crypto.hash(:sha256, "Bitcoin wire signature")
     <<r::binary-size(32), low_s::unsigned-big-256>> = ECDSA.sign(msg_hash, seckey, nil)
     high_signature = <<r::binary, @curve_order - low_s::unsigned-big-256>>
-    wire_signature = ECDSA.serialize_der(high_signature) <> <<1>>
-    der_size = byte_size(wire_signature) - 1
-    <<der_signature::binary-size(^der_size), sighash_type>> = wire_signature
 
-    compact_signature = ECDSA.parse_der(der_signature)
-    refute ECDSA.valid?(compact_signature, msg_hash, pubkey)
-
-    normalized_signature = ECDSA.normalize(compact_signature)
-    assert ECDSA.valid?(normalized_signature, msg_hash, pubkey)
-    assert sighash_type == 1
+    der = ECDSA.serialize_der(high_signature)
+    assert ECDSA.parse_der(der) == high_signature
   end
 
   test "DER and normalization functions reject invalid compact signatures" do

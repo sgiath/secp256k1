@@ -67,6 +67,19 @@ defmodule Secp256k1Test.Schnorr do
     assert Schnorr.valid?(signature, message, :binary.copy(<<255>>, 32)) == false
   end
 
+  test "signing rejects right-sized invalid secret scalars", %{
+    message: message,
+    message_hash: message_hash
+  } do
+    aux = :binary.copy(<<0>>, 32)
+    curve_order = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
+
+    for seckey <- [<<0::256>>, <<curve_order::256>>] do
+      assert_raise ArgumentError, fn -> Schnorr.sign32(message_hash, seckey, aux) end
+      assert_raise ArgumentError, fn -> Schnorr.sign_custom(message, seckey, aux) end
+    end
+  end
+
   test "three-argument functions reject invalid-sized binary arguments", %{
     seckey: seckey,
     pubkey: pubkey,

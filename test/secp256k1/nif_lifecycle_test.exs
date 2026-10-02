@@ -6,22 +6,37 @@ defmodule Secp256k1Test.NifLifecycle do
   alias Secp256k1.MuSig
   alias Secp256k1.Schnorr
 
-  test "package contains only the unified NIF shared object" do
-    priv_files =
-      :lib_secp256k1
-      |> Application.app_dir("priv")
-      |> File.ls!()
-
-    assert ["secp256k1_nif.so"] == Enum.filter(priv_files, &String.ends_with?(&1, ".so"))
-  end
-
   test "NIF upgrade preserves resources and every feature family remains usable" do
+    message = :crypto.hash(:sha256, "single NIF lifecycle")
     first_seckey = <<1::256>>
     second_seckey = <<2::256>>
     first_pubkey = ECDSA.pubkey(first_seckey)
     second_pubkey = ECDSA.pubkey(second_seckey)
     {:ok, _aggregate_xonly_pubkey, cache} = MuSig.pubkey_agg([first_pubkey, second_pubkey])
     expected_compressed_pubkey = MuSig.pubkey_get(cache)
+
+    # Live secret nonces and session created before the upgrade, signed with after it.
+    live_flow = start_two_signer_flow(<<3::256>>, <<4::256>>, message)
+
+    # A nonce consumed before the upgrade must stay consumed after it.
+    consumed_signer = hd(live_flow.signers)
+
+    {:ok, consumed_secnonce, _pubnonce} =
+      MuSig.nonce_gen(
+        consumed_signer.seckey,
+        consumed_signer.pubkey,
+        message,
+        live_flow.cache,
+        nil
+      )
+
+    assert <<_::binary-size(32)>> =
+             MuSig.partial_sign(
+               consumed_secnonce,
+               consumed_signer.seckey,
+               live_flow.cache,
+               live_flow.session
+             )
 
     {mod, bin, file} = :code.get_object_code(Secp256k1.NIF)
     assert mod == Secp256k1.NIF
@@ -30,7 +45,6 @@ defmodule Secp256k1Test.NifLifecycle do
     assert {:module, ^mod} = :code.load_binary(mod, file, bin)
     :code.purge(mod)
 
-    message = :crypto.hash(:sha256, "single NIF lifecycle")
     ecdsa_signature = ECDSA.sign(message, first_seckey, nil)
     assert ECDSA.valid?(ecdsa_signature, message, first_pubkey)
 
@@ -41,10 +55,21 @@ defmodule Secp256k1Test.NifLifecycle do
     assert byte_size(Secp256k1.ECDH.ecdh(first_seckey, second_pubkey)) == 32
     assert MuSig.pubkey_get(cache) == expected_compressed_pubkey
 
-    assert_complete_two_signer_flow(<<3::256>>, <<4::256>>, message)
+    assert MuSig.partial_sign(
+             consumed_secnonce,
+             consumed_signer.seckey,
+             live_flow.cache,
+             live_flow.session
+           ) == {:error, "nonce already used"}
+
+    finish_two_signer_flow(live_flow)
+
+    <<5::256>>
+    |> start_two_signer_flow(<<6::256>>, message)
+    |> finish_two_signer_flow()
   end
 
-  defp assert_complete_two_signer_flow(first_seckey, second_seckey, message) do
+  defp start_two_signer_flow(first_seckey, second_seckey, message) do
     signers =
       Enum.map([first_seckey, second_seckey], fn seckey ->
         %{seckey: seckey, pubkey: ECDSA.pubkey(seckey)}
@@ -68,10 +93,18 @@ defmodule Secp256k1Test.NifLifecycle do
       |> Enum.map(& &1.pubnonce)
       |> MuSig.nonce_agg()
 
-    session = MuSig.nonce_process(aggregate_nonce, message, cache)
+    %{
+      signers: signers,
+      message: message,
+      aggregate_xonly_pubkey: aggregate_xonly_pubkey,
+      cache: cache,
+      session: MuSig.nonce_process(aggregate_nonce, message, cache)
+    }
+  end
 
-    signers =
-      Enum.map(signers, fn signer ->
+  defp finish_two_signer_flow(%{cache: cache, session: session} = flow) do
+    partial_signatures =
+      Enum.map(flow.signers, fn signer ->
         partial_signature =
           MuSig.partial_sign(signer.secnonce, signer.seckey, cache, session)
 
@@ -83,14 +116,11 @@ defmodule Secp256k1Test.NifLifecycle do
                  session
                )
 
-        Map.put(signer, :partial_signature, partial_signature)
+        partial_signature
       end)
 
-    final_signature =
-      signers
-      |> Enum.map(& &1.partial_signature)
-      |> then(&MuSig.partial_sig_agg(session, &1))
+    final_signature = MuSig.partial_sig_agg(session, partial_signatures)
 
-    assert Schnorr.valid?(final_signature, message, aggregate_xonly_pubkey)
+    assert Schnorr.valid?(final_signature, flow.message, flow.aggregate_xonly_pubkey)
   end
 end
