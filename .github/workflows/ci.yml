@@ -117,12 +117,12 @@ jobs:
       - name: Fetch dependencies
         run: mix deps.get --only test
 
-      # The Makefile's build-configuration fingerprint (c_src/.build-config)
+      # The Makefile's build-configuration fingerprint (c_src/build/<id>/build-config)
       # includes SECP256K1_NIF_SANITIZE, so any non-sanitized objects are rebuilt.
       - name: Build sanitized NIF
         run: |
           mix compile
-          ldd priv/secp256k1_nif.so | grep -E 'lib(asan|ubsan)'
+          ldd _build/test/lib/lib_secp256k1/priv/secp256k1_nif.so | grep -E 'lib(asan|ubsan)'
 
       # The BEAM itself is not instrumented, so the ASan runtime must be the first
       # loaded library. The build above runs without the preload; `mix test` finds
@@ -154,7 +154,7 @@ jobs:
         run: mix hex.build --unpack --output "$RUNNER_TEMP/lib_secp256k1"
 
       # Compiles only the files listed in mix.exs `package: [files: ...]`, from a
-      # pristine tree (no extracted c_src/secp256k1, objects, or priv/*.so).
+      # pristine tree (no extracted c_src/secp256k1 or c_src/build/).
       - name: Compile the unpacked package as a path dependency
         working-directory: ${{ runner.temp }}
         run: |

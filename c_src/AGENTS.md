@@ -2,27 +2,27 @@
 
 ## OVERVIEW
 
-First-party C glue for Elixir NIFs. All first-party C sources link into one `priv/secp256k1_nif.so`; `c_src/secp256k1/` is upstream code extracted from the vendored tarball, not local source.
+First-party C glue for Elixir NIFs. All first-party C sources link into one `secp256k1_nif.so`, installed into `$MIX_APP_PATH/priv/`; `c_src/secp256k1/` is upstream code extracted from the vendored tarball, not local source, and `c_src/build/` holds per-app-path build output.
 
 ## WHERE TO LOOK
 
-| Task             | Location         | Notes                                                                  |
-| ---------------- | ---------------- | ---------------------------------------------------------------------- |
-| State interface  | `utils.h`        | `priv_data` state, `nif_ctx(env)`, wire sizes, result/callback helpers |
-| State lifecycle  | `utils.c`        | Preallocated context, randomization, destruction, errors, callbacks    |
-| NIF declarations | `nifs.h`         | Unified entrypoint prototypes and MuSig resource setup                 |
-| NIF registration | `nif.c`          | Callback guard wrappers, function table, load/upgrade/unload callbacks |
-| Random bytes     | `random.h`       | OS-specific `fill_random`                                              |
-| ECDSA            | `ecdsa.c`        | Pubkey conversion, compact sign/verify                                 |
-| Schnorr          | `schnorrsig.c`   | BIP340 sign/verify, arbitrary-message signing                          |
-| ECDH             | `ecdh.c`         | 32-byte hashed shared secret                                           |
-| X-only keys      | `extrakeys.c`    | seckey to x-only pubkey, tweaks                                        |
-| MuSig2 types     | `musig.h`        | Private wrapper structs with transcript copies, helper prototypes      |
-| MuSig2 resources | `musig.c`        | Resource types, constructors, getters, cache compare, list allocation  |
-| MuSig2 key agg   | `musig_keyagg.c` | `pubkey_agg`, `pubkey_get`, keyagg cache tweaks                        |
-| MuSig2 nonces    | `musig_nonce.c`  | `nonce_gen`, `nonce_agg`, `nonce_process`                              |
-| MuSig2 signing   | `musig_sign.c`   | `partial_sign`, `partial_sig_verify`, `partial_sig_agg`                |
-| Build            | `../Makefile`    | All `c_src/*.c` -> `priv/secp256k1_nif.so`; objects depend on `*.h`    |
+| Task             | Location         | Notes                                                                   |
+| ---------------- | ---------------- | ----------------------------------------------------------------------- |
+| State interface  | `utils.h`        | `priv_data` state, `nif_ctx(env)`, wire sizes, result/callback helpers  |
+| State lifecycle  | `utils.c`        | Preallocated context, randomization, destruction, errors, callbacks     |
+| NIF declarations | `nifs.h`         | Unified entrypoint prototypes and MuSig resource setup                  |
+| NIF registration | `nif.c`          | Callback guard wrappers, function table, load/upgrade/unload callbacks  |
+| Random bytes     | `random.h`       | OS-specific `fill_random`                                               |
+| ECDSA            | `ecdsa.c`        | Pubkey conversion, compact sign/verify                                  |
+| Schnorr          | `schnorrsig.c`   | BIP340 sign/verify, arbitrary-message signing                           |
+| ECDH             | `ecdh.c`         | 32-byte hashed shared secret                                            |
+| X-only keys      | `extrakeys.c`    | seckey to x-only pubkey, tweaks                                         |
+| MuSig2 types     | `musig.h`        | Private wrapper structs with transcript copies, helper prototypes       |
+| MuSig2 resources | `musig.c`        | Resource types, constructors, getters, cache compare, list allocation   |
+| MuSig2 key agg   | `musig_keyagg.c` | `pubkey_agg`, `pubkey_get`, keyagg cache tweaks                         |
+| MuSig2 nonces    | `musig_nonce.c`  | `nonce_gen`, `nonce_agg`, `nonce_process`                               |
+| MuSig2 signing   | `musig_sign.c`   | `partial_sign`, `partial_sig_verify`, `partial_sig_agg`                 |
+| Build            | `../Makefile`    | `c_src/*.c` -> `c_src/build/<id>/` -> `$MIX_APP_PATH/priv/`; `*.h` deps |
 
 ## CONVENTIONS
 

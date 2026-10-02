@@ -2,7 +2,7 @@
 
 ## OVERVIEW
 
-Elixir bindings for bitcoin-core `secp256k1` v0.7.1. The public Elixir facade delegates to feature modules, and the private `Secp256k1.NIF` module loads the single `priv/secp256k1_nif.so` shared object.
+Elixir bindings for bitcoin-core `secp256k1` v0.7.1. The public Elixir facade delegates to feature modules, and the private `Secp256k1.NIF` module loads the single `secp256k1_nif.so` shared object from the app's `priv/` build directory.
 
 ## STRUCTURE
 
@@ -11,7 +11,7 @@ Elixir bindings for bitcoin-core `secp256k1` v0.7.1. The public Elixir facade de
 |-- lib/              # Elixir facade, feature wrappers, size guards
 |-- c_src/            # first-party C NIF glue; see c_src/AGENTS.md
 |-- test/             # ExUnit helpers, protocol tests, vectors; see test/AGENTS.md
-|-- docs/             # Livebook guides (*.livemd) used as ExDoc extras, not generated output
+|-- docs/             # Livebook guides (*.livemd) used as ExDoc extras, README banner + its generator; not generated output
 |-- .clang-format     # style for first-party C (c_src/*.c, c_src/*.h)
 |-- Makefile          # verify/extract vendored secp256k1 tarball + build one NIF .so
 `-- usage-rules.md    # user-facing API rules and common mistakes
@@ -70,7 +70,8 @@ Elixir bindings for bitcoin-core `secp256k1` v0.7.1. The public Elixir facade de
 - Never persist or send MuSig `secnonce`, `session`, or `keyagg_cache` to another node. They are NIF resource references, usable by any process on the creating node only; `term_to_binary` keeps a handle, not their state.
 - Do not use custom AUX APIs (`ECDSA.sign/3`, `Schnorr.sign32/3`, `Schnorr.sign_custom/3`) unless a test vector explicitly requires it. Prefer 2-arg signers.
 - Do not mix pubkey formats: ECDSA verifies compressed 33-byte or uncompressed 65-byte pubkeys; Schnorr verifies x-only 32-byte pubkeys.
-- Do not edit `c_src/secp256k1/`, `_build/`, `deps/`, `doc/`, or `priv/*.so` as source. They are extracted, generated, or build output.
+- Do not edit `c_src/secp256k1/`, `c_src/build/`, `_build/`, `deps/`, or `doc/` as source. They are extracted, generated, or build output.
+- Do not add a top-level `priv/` directory. Mix would symlink it into every build path and all builds would share one NIF.
 - Do not weaken vector tests or delete failing cases. Fix implementation or update vectors only with provenance.
 
 ## COMMANDS
@@ -88,12 +89,12 @@ make distclean
 
 ## NOTES
 
-- `Makefile` verifies the SHA256 of the vendored `c_src/secp256k1-<version>.tar.gz`, extracts it into a unique `c_src/secp256k1.tmp.*` directory renamed into `c_src/secp256k1/`, configures `--enable-experimental --enable-module-musig`, builds a static lib, then links one `priv/secp256k1_nif.so` from all first-party native objects. Objects and the `.so` are written to a per-process temp file and renamed into place. First-party objects depend on every `c_src/*.h`; objects and the `.so` also depend on the Makefile itself. Changed compilers, build flags, or the `c_src/*.c` source set trigger a rebuild through the `c_src/.build-config*` fingerprints. Upstream configure/make output goes to `c_src/secp256k1/.nif-{configure,make}.log` and is printed on failure.
+- `Makefile` verifies the SHA256 of the vendored `c_src/secp256k1-<version>.tar.gz` and extracts it into a unique `c_src/secp256k1.tmp.*` directory renamed into `c_src/secp256k1/`, which is never configured in place. Each Mix app path (`MIX_APP_PATH`, set by `elixir_make`; one per `MIX_ENV`, target, ElixirLS build, or consumer project) builds in its own `c_src/build/<cksum of app path>/`: an out-of-tree upstream configure (`--enable-experimental --enable-module-musig`) and static lib, first-party objects, fingerprints, and the linked `secp256k1_nif.so`, which is then copied into `$MIX_APP_PATH/priv/` when it differs. Concurrent builds for different app paths therefore never share outputs. Objects and the `.so` are written to a per-process temp file and renamed into place. First-party objects depend on every `c_src/*.h`; objects and the `.so` also depend on the Makefile itself. Changed compilers, build flags, or the `c_src/*.c` source set trigger a rebuild through the `build-config*` fingerprints in the build directory. Upstream configure/make output goes to `libsecp256k1-{configure,make}.log` there and is printed on failure.
 - Required NIF flags (`-fPIC`, the ERTS and libsecp256k1 include dirs, `-shared`, macOS `-undefined dynamic_lookup`) live in `NIF_REQUIRED_*` variables, separate from user `CFLAGS`/`CPPFLAGS`/`LDFLAGS`/`LIBS`, so `make CFLAGS=...` overrides keep them. Keep new required flags out of the user variables.
 - `SECP256K1_NIF_WERROR=1` adds `-Werror` to first-party C compiles; `SECP256K1_NIF_SANITIZE=1` builds the NIF with AddressSanitizer and UBSan. Run sanitized tests with `LD_PRELOAD=$(gcc -print-file-name=libasan.so) ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 MIX_ENV=test mix test --include expensive`.
 - Minimum Elixir is 1.16 (`mix.exs`). Jason is a dev/test dependency for loading JSON test vectors, because Elixir's built-in `JSON` needs 1.18.
 - CI lives in `.github/workflows/ci.yml` (jobs `check`, `sanitizers`, `package`), with actions pinned to commit SHAs. The `check` matrix runs Elixir 1.16-1.20 on every OTP release each supports (1.16: 24-26, 1.17 and 1.18: 25-27, 1.19: 26-28, 1.20: 27-29) on `ubuntu-24.04`, plus macOS rows for 1.16/OTP 25 and 1.20/OTP 29. Elixir 1.16 and 1.17 rows build and run `mix test --include expensive` only, because the dev tooling needs 1.17/1.18+; 1.18+ rows run `mix check`. One Linux row (1.20/OTP 29) also runs the `clang-format` gate.
 - First-party C is formatted by the repo-root `.clang-format`; check with `clang-format --dry-run --Werror c_src/*.c c_src/*.h` (also a devenv git hook). See `c_src/AGENTS.md`.
-- `ERTS_INCLUDE_DIR` must be set for native compilation; `elixir_make` usually supplies it.
-- `mix clean` maps to native `distclean`, deleting extracted `c_src/secp256k1/`.
+- `ERTS_INCLUDE_DIR` and `MIX_APP_PATH` must be set for native compilation; `elixir_make` supplies both.
+- `mix clean` maps to native `distclean`, deleting every `c_src/build/` directory and the extracted `c_src/secp256k1/`. `make clean` removes only the current app path's build directory and installed NIF.
 - Maintainers update the vendored release with `make vendor VERSION=vX.Y.Z`; the workflow verifies the signed upstream tag with GPG by default and requires the signing primary key to be listed in `scripts/secp256k1-release-signers.txt` (from upstream `SECURITY.md`). `--allow-unverified` is an explicit override.

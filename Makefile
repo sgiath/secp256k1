@@ -6,24 +6,43 @@ LIB_SHA256 := 0f587e73557494d423beeeaa0a4c4c0331bb612880c330fdc99dfd902e9ce020
 # --- Tools ---
 CC ?= gcc
 
+# Quote a value for use inside a single-quoted shell string.
+sq = $(subst ','\'',$(1))
+
 # --- Directories ---
-TARGET_DIR := ./priv
 SRC_DIR := ./c_src
 LIB_SRC_DIR := $(SRC_DIR)/secp256k1
 LIB_TARBALL := $(SRC_DIR)/secp256k1-$(LIB_VERSION).tar.gz
-LIB_BUILD_DIR := $(LIB_SRC_DIR)/.libs
-LIB_STATIC_LIB := $(LIB_BUILD_DIR)/libsecp256k1.a
 
-# Logs of the upstream configure/make steps (inside the extracted tree).
-LIB_CONFIGURE_LOG := $(LIB_SRC_DIR)/.nif-configure.log
-LIB_MAKE_LOG := $(LIB_SRC_DIR)/.nif-make.log
+# Every Mix app path (one per MIX_ENV, MIX_TARGET, ElixirLS build, or consumer
+# project of this dependency) gets its own build directory, so concurrent
+# builds never share objects, the upstream configure/make tree, fingerprints, or
+# the NIF. Only the verified extracted upstream source is shared, and it is
+# never configured in place. The directory is named by a checksum of the app
+# path, so make targets stay relative and free of spaces. elixir_make sets
+# MIX_APP_PATH; the NIF is installed into $(MIX_APP_PATH)/priv. The project has
+# no top-level priv/, so Mix never symlinks one shared priv into every build.
+BUILD_ID := $(shell printf '%s' '$(call sq,$(MIX_APP_PATH))' | cksum | awk '{print $$1}')
+BUILD_DIR = $(SRC_DIR)/build/$(BUILD_ID)
+OBJ_DIR = $(BUILD_DIR)/obj
+PRIV_DIR = $(MIX_APP_PATH)/priv
+
+# Upstream VPATH build. LIB_SRC_FROM_BUILD is LIB_SRC_DIR relative to
+# LIB_BUILD_ROOT, so configure gets a relative source path.
+LIB_BUILD_ROOT = $(BUILD_DIR)/libsecp256k1
+LIB_SRC_FROM_BUILD := ../../../secp256k1
+LIB_STATIC_LIB = $(LIB_BUILD_ROOT)/.libs/libsecp256k1.a
+
+# Logs of the upstream configure/make steps.
+LIB_CONFIGURE_LOG = $(BUILD_DIR)/libsecp256k1-configure.log
+LIB_MAKE_LOG = $(BUILD_DIR)/libsecp256k1-make.log
 
 # Build configuration fingerprints. Each file holds the build variables that
 # affect its consumers and is only rewritten when that content changes, so a
 # changed compiler or flag set rebuilds exactly what it affects while a repeated
 # `make` stays a no-op.
-NIF_BUILD_CONFIG := $(SRC_DIR)/.build-config
-LIB_BUILD_CONFIG := $(SRC_DIR)/.build-config-libsecp256k1
+NIF_BUILD_CONFIG = $(BUILD_DIR)/build-config
+LIB_BUILD_CONFIG = $(BUILD_DIR)/build-config-libsecp256k1
 
 # Path of this Makefile. First-party objects and the NIF depend on it, so a
 # changed compile or link recipe rebuilds them.
@@ -50,20 +69,20 @@ else
   logged = $(2)
 endif
 
-# Quote a value for use inside a single-quoted shell string.
-sq = $(subst ','\'',$(1))
-
 # --- Build Flags ---
-# Check for required Erlang include directory
+# Check for the required Erlang include directory and Mix app path
 ifeq ($(MAKECMDGOALS),)
-  ERTS_REQUIRED := yes
+  BUILD_REQUIRED := yes
 else ifneq ($(filter-out vendor clean distclean,$(MAKECMDGOALS)),)
-  ERTS_REQUIRED := yes
+  BUILD_REQUIRED := yes
 endif
 
-ifeq ($(ERTS_REQUIRED),yes)
+ifeq ($(BUILD_REQUIRED),yes)
   ifeq ($(ERTS_INCLUDE_DIR),)
     $(error ERTS_INCLUDE_DIR is not set. Please set it, e.g., ERTS_INCLUDE_DIR=$$(erl -eval 'io:format("~s/erts-~s/include",[code:root_dir(), erlang:system_info(version)]).' -noshell -s init stop))
+  endif
+  ifeq ($(MIX_APP_PATH),)
+    $(error MIX_APP_PATH is not set. Build through `mix compile`, or set it to the app build directory, e.g. MIX_APP_PATH=$$PWD/_build/dev/lib/lib_secp256k1)
   endif
 endif
 
@@ -163,65 +182,77 @@ atomic_output = tmp="$(1).tmp.$$$$"; \
 # --- Source Files & Targets ---
 # Sorted so the link order and the NIF fingerprint are stable.
 NIF_SOURCES = $(sort $(wildcard $(SRC_DIR)/*.c))
-NIF_OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(SRC_DIR)/%.o,$(NIF_SOURCES))
-NIF_TARGET = $(TARGET_DIR)/secp256k1_nif.so
+NIF_OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(NIF_SOURCES))
+NIF_BUILT = $(BUILD_DIR)/secp256k1_nif.so
 
 # Every first-party header is a dependency of every first-party object.
 NIF_HEADERS = $(wildcard $(SRC_DIR)/*.h)
 
-# Version- and checksum-specific stamp indicating verified source extraction
-EXTRACT_STAMP = $(LIB_SRC_DIR)/.extracted-$(LIB_VERSION)-$(LIB_SHA256)
+# Version- and checksum-specific stamp indicating verified source extraction.
+# The `source` prefix marks trees that are never configured in place; trees an
+# older Makefile configured in place lack it and are re-extracted, because
+# autotools refuses a VPATH build from a configured source tree.
+EXTRACT_STAMP = $(LIB_SRC_DIR)/.source-$(LIB_VERSION)-$(LIB_SHA256)
 
 # Remove a target whose recipe failed so a partial output is never reused.
 .DELETE_ON_ERROR:
 
 # --- Default Target ---
 .PHONY: all
-all: $(NIF_TARGET)
+all: install
 
 # --- Build Configuration Fingerprints ---
 .PHONY: FORCE
 FORCE:
 
 $(NIF_BUILD_CONFIG): FORCE
+	@mkdir -p $(@D)
 	@$(call write_if_changed,$@,$(NIF_BUILD_CONFIG_LINES))
 
 $(LIB_BUILD_CONFIG): FORCE
+	@mkdir -p $(@D)
 	@$(call write_if_changed,$@,$(LIB_BUILD_CONFIG_LINES))
 
 # --- NIF Compilation and Link Rules ---
-# $@ = target file ($(SRC_DIR)/%.o)
+# $@ = target file ($(OBJ_DIR)/%.o)
 # $< = first prerequisite ($(SRC_DIR)/%.c)
-$(SRC_DIR)/%.o: $(SRC_DIR)/%.c $(NIF_HEADERS) $(EXTRACT_STAMP) $(NIF_BUILD_CONFIG) $(THIS_MAKEFILE)
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c $(NIF_HEADERS) $(EXTRACT_STAMP) $(NIF_BUILD_CONFIG) $(THIS_MAKEFILE)
+	@mkdir -p $(@D)
 	$(ECHO) "  CC       $@"
 	@$(call atomic_output,$@,$(CC) $(NIF_CPPFLAGS) $(NIF_CFLAGS) -c -o "$$tmp" $<)
 
-$(NIF_TARGET): $(NIF_OBJECTS) $(LIB_STATIC_LIB) $(NIF_BUILD_CONFIG) $(THIS_MAKEFILE)
-	@mkdir -p $(@D)
+$(NIF_BUILT): $(NIF_OBJECTS) $(LIB_STATIC_LIB) $(NIF_BUILD_CONFIG) $(THIS_MAKEFILE)
 	$(ECHO) "  LD       $@"
 	@$(call atomic_output,$@,$(CC) $(NIF_LDFLAGS) -o "$$tmp" $(NIF_OBJECTS) $(LIB_STATIC_LIB) $(NIF_REQUIRED_LDFLAGS) $(LDFLAGS) $(LIBS))
-	@rm -f $(TARGET_DIR)/ecdsa.so $(TARGET_DIR)/schnorrsig.so $(TARGET_DIR)/ecdh.so $(TARGET_DIR)/extrakeys.so $(TARGET_DIR)/musig.so
+
+# Copies the NIF into the Mix app's priv directory when it differs, replacing
+# it with one rename. A priv symlink is a leftover from a top-level priv/
+# directory (which this project no longer has) and would share one NIF between
+# builds, so it is replaced with a real directory.
+.PHONY: install
+install: $(NIF_BUILT)
+	@dest='$(call sq,$(PRIV_DIR))'; \
+	if [ -L "$$dest" ]; then rm -f "$$dest"; fi; \
+	mkdir -p "$$dest" && \
+	if ! cmp -s $(NIF_BUILT) "$$dest/secp256k1_nif.so"; then \
+		echo "  INSTALL  $$dest/secp256k1_nif.so"; \
+		tmp="$$dest/secp256k1_nif.so.tmp.$$$$"; \
+		{ cp $(NIF_BUILT) "$$tmp" && mv -f "$$tmp" "$$dest/secp256k1_nif.so"; } || { status=$$?; rm -f "$$tmp"; exit $$status; }; \
+	fi
 
 # --- secp256k1 Library Compilation Chain ---
-#
-# FIXME: concurrent make invocations in one checkout (e.g. two MIX_ENVs
-# compiling at once on a fresh clone) are safe for extraction, fingerprints,
-# objects, and the NIF link, but still share one upstream tree for configure
-# and make and can race there. A portable lock (no flock on macOS) with stale
-# lock recovery is not worth it here; run one `mix compile` first.
 
 # The static library depends on the Makefile existing *and* being configured
-$(LIB_STATIC_LIB): $(LIB_SRC_DIR)/Makefile
+$(LIB_STATIC_LIB): $(LIB_BUILD_ROOT)/Makefile
 	$(ECHO) "  MAKE     libsecp256k1"
-	@$(call logged,$(LIB_MAKE_LOG),$(MAKE) -C $(LIB_SRC_DIR) $(QUIET_MAKE))
+	@$(call logged,$(LIB_MAKE_LOG),$(MAKE) -C $(LIB_BUILD_ROOT) $(QUIET_MAKE))
 
-# The Makefile is created by configure after verified source extraction and is
-# regenerated (from a clean upstream tree) whenever the configure fingerprint
-# changes.
-$(LIB_SRC_DIR)/Makefile: $(EXTRACT_STAMP) $(LIB_BUILD_CONFIG)
+# configure runs in a fresh build directory after verified source extraction
+# and again whenever the configure fingerprint changes.
+$(LIB_BUILD_ROOT)/Makefile: $(EXTRACT_STAMP) $(LIB_BUILD_CONFIG)
 	$(ECHO) "  CONFIG   libsecp256k1"
-	@if [ -f "$@" ]; then $(MAKE) -C $(LIB_SRC_DIR) distclean $(QUIET_MAKE) $(QUIET_CMD) || rm -f "$@"; fi
-	@$(call logged,$(LIB_CONFIGURE_LOG),cd $(LIB_SRC_DIR) && ./configure $(CONFIG_OPTS))
+	@rm -rf $(LIB_BUILD_ROOT) && mkdir -p $(LIB_BUILD_ROOT)
+	@$(call logged,$(LIB_CONFIGURE_LOG),cd $(LIB_BUILD_ROOT) && $(LIB_SRC_FROM_BUILD)/configure $(CONFIG_OPTS))
 
 # Verification happens at extraction time, not on every no-op compile.
 # The tarball is unpacked into a unique sibling directory (same filesystem, so
@@ -263,17 +294,16 @@ vendor:
 # --- Cleaning Targets ---
 .PHONY: clean distclean
 
-# clean: Remove built NIFs, build fingerprints, and the library build artifacts
+# clean: Remove this build's directory and its installed NIF
 clean:
 	$(ECHO) "  CLEAN    build artifacts"
-	@rm -f $(TARGET_DIR)/*.so $(TARGET_DIR)/*.so.tmp.*
-	@rm -f $(SRC_DIR)/*.o $(SRC_DIR)/*.o.tmp.*
-	@rm -f $(NIF_BUILD_CONFIG) $(NIF_BUILD_CONFIG).tmp.* $(LIB_BUILD_CONFIG) $(LIB_BUILD_CONFIG).tmp.*
-	@if [ -f "$(LIB_SRC_DIR)/Makefile" ]; then \
-		$(MAKE) -C $(LIB_SRC_DIR) clean $(QUIET_MAKE) $(QUIET_CMD); \
+	@rm -rf $(BUILD_DIR)
+	@if [ -n '$(call sq,$(MIX_APP_PATH))' ]; then \
+		rm -f '$(call sq,$(PRIV_DIR))'/secp256k1_nif.so '$(call sq,$(PRIV_DIR))'/secp256k1_nif.so.tmp.*; \
 	fi
 
-# distclean: Remove everything clean does, plus the extracted library source
+# distclean: Remove everything clean does, every other build directory, and the
+# extracted library source
 distclean: clean
 	$(ECHO) "  CLEAN    extracted sources"
-	@rm -rf $(LIB_SRC_DIR) $(LIB_SRC_DIR).tmp.*
+	@rm -rf $(SRC_DIR)/build $(LIB_SRC_DIR) $(LIB_SRC_DIR).tmp.*

@@ -1,8 +1,8 @@
 # Generates the README header banner. Run from the repo root:
 #
-#     elixir priv/graphics.exs
+#     elixir docs/graphics.exs
 #
-# Writes priv/header.svg in the same visual language as the sgiath profile
+# Writes docs/header.svg in the same visual language as the sgiath profile
 # header (StaticSite.Orbits.header_caption/1 in the sgiath.dev repo): a dark
 # minimalist card, thin monochrome line-work with a single accent node, and a
 # centered letterspaced caption. The line-work here is the secp256k1 curve
@@ -104,5 +104,5 @@ defmodule Header do
   end
 end
 
-File.write!("priv/header.svg", Header.svg())
-IO.puts("wrote priv/header.svg")
+File.write!("docs/header.svg", Header.svg())
+IO.puts("wrote docs/header.svg")
