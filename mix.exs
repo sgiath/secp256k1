@@ -57,7 +57,10 @@ defmodule Secp256k1.MixProject do
 
       # Test vectors (Elixir's built-in JSON needs 1.18). Also in :dev because credo
       # requires it there.
-      {:jason, "~> 1.4", only: [:dev, :test]}
+      {:jason, "~> 1.4", only: [:dev, :test]},
+
+      # Property tests. Also in :dev so `.formatter.exs` can import its `check all` style.
+      {:stream_data, "~> 1.4", only: [:dev, :test]}
     ]
   end
 
