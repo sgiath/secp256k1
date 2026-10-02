@@ -1,0 +1,162 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: check (${{ matrix.os }}, Elixir ${{ matrix.beam.elixir }}, OTP ${{ matrix.beam.otp }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        beam:
+          # Minimum supported Elixir (mix.exs `elixir: "~> 1.15"`) with a compatible OTP.
+          # Dev-only tooling (ex_check, mix_test_watch, mix_audit) requires a newer Elixir,
+          # so this entry builds the NIF and runs the full test suite instead of `mix check`.
+          - elixir: "1.15"
+            otp: "26"
+            full: false
+          # Latest Elixir/OTP: full `mix check`.
+          - elixir: "1.20"
+            otp: "29"
+            full: true
+    env:
+      SECP256K1_NIF_WERROR: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: beam
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ matrix.beam.otp }}
+          elixir-version: ${{ matrix.beam.elixir }}
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ runner.arch }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ matrix.beam.full && 'full' || 'min' }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            mix-${{ runner.os }}-${{ runner.arch }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ matrix.beam.full && 'full' || 'min' }}-
+
+      - name: Install prettier
+        if: matrix.beam.full
+        run: npm install --global prettier@3.8.3
+
+      - name: Fetch dependencies
+        if: matrix.beam.full
+        run: mix deps.get
+
+      - name: Fetch test dependencies
+        if: ${{ !matrix.beam.full }}
+        run: mix deps.get --only test
+        env:
+          MIX_ENV: test
+
+      - name: mix check
+        if: matrix.beam.full
+        run: mix check
+
+      - name: mix test
+        if: ${{ !matrix.beam.full }}
+        run: mix test --include expensive
+        env:
+          MIX_ENV: test
+
+  sanitizers:
+    name: sanitizers (ASan + UBSan)
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: test
+      CC: gcc
+      SECP256K1_NIF_SANITIZE: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: beam
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          elixir-version: "1.20"
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build
+          key: mix-sanitizers-${{ runner.os }}-${{ runner.arch }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            mix-sanitizers-${{ runner.os }}-${{ runner.arch }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-
+
+      - name: Fetch dependencies
+        run: mix deps.get --only test
+
+      # The Makefile's build-configuration fingerprint (c_src/.build-config)
+      # includes SECP256K1_NIF_SANITIZE, so any non-sanitized objects are rebuilt.
+      - name: Build sanitized NIF
+        run: |
+          mix compile
+          ldd priv/secp256k1_nif.so | grep -E 'lib(asan|ubsan)'
+
+      # The BEAM itself is not instrumented, so the ASan runtime must be the first
+      # loaded library. The build above runs without the preload; `mix test` finds
+      # the NIF up to date and only loads it.
+      - name: mix test (sanitized NIF)
+        run: |
+          LD_PRELOAD="$(gcc -print-file-name=libasan.so)"
+          export LD_PRELOAD
+          mix test --include expensive
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+
+  package:
+    name: package (hex.build --unpack)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          elixir-version: "1.20"
+
+      - name: Fetch dependencies
+        run: mix deps.get
+
+      - name: Build and unpack the Hex package
+        run: mix hex.build --unpack --output "$RUNNER_TEMP/lib_secp256k1"
+
+      # Compiles only the files listed in mix.exs `package: [files: ...]`, from a
+      # pristine tree (no extracted c_src/secp256k1, objects, or priv/*.so).
+      - name: Compile the unpacked package as a path dependency
+        working-directory: ${{ runner.temp }}
+        run: |
+          mix new consumer
+          cd consumer
+          cat > mix.exs <<EOF
+          defmodule Consumer.MixProject do
+            use Mix.Project
+
+            def project do
+              [app: :consumer, version: "0.1.0", deps: [{:lib_secp256k1, path: "$RUNNER_TEMP/lib_secp256k1"}]]
+            end
+
+            def application, do: [extra_applications: [:logger]]
+          end
+          EOF
+          mix deps.get
+          mix compile
+          mix run -e '
+            {seckey, pubkey} = Secp256k1.keypair(:xonly)
+            signature = Secp256k1.schnorr_sign("hex package smoke", seckey)
+            true = Secp256k1.schnorr_valid?(signature, "hex package smoke", pubkey)
+            IO.puts("unpacked package NIF loaded and verified a signature")
+          '
