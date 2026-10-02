@@ -46,6 +46,23 @@ defmodule Secp256k1Test.ECDSA do
     assert_raise FunctionClauseError, fn -> ECDSA.decompress_pubkey(<<1>>) end
   end
 
+  test "public-key derivation rejects right-sized invalid secret scalars" do
+    for seckey <- [<<0::256>>, <<@curve_order::256>>] do
+      assert_raise ArgumentError, fn -> ECDSA.pubkey(seckey) end
+      assert_raise ArgumentError, fn -> ECDSA.pubkey(seckey, compress: false) end
+      assert_raise ArgumentError, fn -> ECDSA.compressed_pubkey(seckey) end
+      assert_raise ArgumentError, fn -> ECDSA.uncompressed_pubkey(seckey) end
+    end
+  end
+
+  test "decompress_pubkey returns an error for right-sized malformed public keys" do
+    # An invalid prefix byte, and an x coordinate at or above the field size.
+    for pubkey <- [<<0::264>>, <<2>> <> :binary.copy(<<255>>, 32)] do
+      assert {:error, reason} = ECDSA.decompress_pubkey(pubkey)
+      assert is_binary(reason)
+    end
+  end
+
   test "sign/3 with nil uses deterministic RFC 6979" do
     seckey = d("0000000000000000000000000000000000000000000000000000000000000001")
     msg_hash = d("0000000000000000000000000000000000000000000000000000000000000002")

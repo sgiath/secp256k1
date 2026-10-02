@@ -8,6 +8,10 @@ defmodule Secp256k1Test.SchnorrBIP340 do
 
   @vectors Vectors.load_bip340()
 
+  test "loads all 19 BIP-340 vectors" do
+    assert Enum.map(@vectors, & &1.index) == Enum.to_list(0..18)
+  end
+
   for vector <- @vectors do
     index = vector.index
     comment = vector.comment

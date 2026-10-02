@@ -446,6 +446,19 @@ defmodule Secp256k1.MuSigTest do
     end
   end
 
+  test "aggregation lists reject non-binary elements" do
+    state = signing_state()
+
+    for element <- [nil, :element, 1, [state.partial_sig]] do
+      assert_raise ArgumentError, fn -> MuSig.pubkey_agg([state.pubkey, element]) end
+      assert_raise ArgumentError, fn -> MuSig.nonce_agg([state.pubnonce, element]) end
+
+      assert_raise ArgumentError, fn ->
+        MuSig.partial_sig_agg(state.session, [state.partial_sig, element])
+      end
+    end
+  end
+
   test "opaque MuSig state rejects forged binaries" do
     state = signing_state()
     tweak = <<1::256>>
@@ -541,6 +554,49 @@ defmodule Secp256k1.MuSigTest do
     """)
   end
 
+  @tag :expensive
+  test "genuine MuSig resources raise in a BEAM that does not hold them" do
+    {seckey, pubkey} = Secp256k1.keypair(:compressed)
+    {:ok, _agg_xonly_pubkey, cache} = MuSig.pubkey_agg([pubkey])
+    msg = :crypto.strong_rand_bytes(32)
+    {:ok, secnonce, pubnonce} = MuSig.nonce_gen(seckey, pubkey, msg, cache, nil)
+    session = session_for([pubnonce], msg, cache)
+    terms = Enum.map([cache, secnonce, session], &serialize/1)
+    [cache_term, secnonce_term, session_term] = terms
+
+    # In this VM the serialized handles decode to the live resources they were taken from.
+    [decoded_cache, decoded_secnonce, decoded_session] = Enum.map(terms, &deserialize/1)
+    assert MuSig.pubkey_get(decoded_cache) == MuSig.pubkey_get(cache)
+
+    partial_sig = MuSig.partial_sign(decoded_secnonce, seckey, cache, decoded_session)
+
+    assert MuSig.partial_sig_verify(partial_sig, pubnonce, pubkey, cache, session)
+
+    # A child BEAM decodes the same handles, but their resources do not exist there. Each probe
+    # passes the stale handle alongside otherwise valid arguments.
+    child_signer = """
+    {seckey, pubkey} = Secp256k1.keypair(:compressed)
+    {:ok, _agg_xonly_pubkey, cache} = MuSig.pubkey_agg([pubkey])
+    msg = <<1::256>>
+    {:ok, _secnonce, pubnonce} = MuSig.nonce_gen(seckey, pubkey, msg, cache, nil)
+    session = MuSig.nonce_process(MuSig.nonce_agg([pubnonce]), msg, cache)
+    """
+
+    assert_stale_resource_argument_error(cache_term, "", "MuSig.pubkey_get(stale)")
+
+    assert_stale_resource_argument_error(
+      secnonce_term,
+      child_signer,
+      "MuSig.partial_sign(stale, seckey, cache, session)"
+    )
+
+    assert_stale_resource_argument_error(
+      session_term,
+      "",
+      ~s|MuSig.partial_sig_agg(stale, [Base.decode16!("#{Base.encode16(partial_sig)}")])|
+    )
+  end
+
   defp signers(count) do
     for _ <- 1..count do
       {seckey, pubkey} = Secp256k1.keypair(:compressed)
@@ -614,5 +670,34 @@ defmodule Secp256k1.MuSigTest do
 
     assert status == 0, output
     assert output =~ "MUSIG_SUBPROCESS_ARGUMENT_ERROR"
+  end
+
+  defp serialize(term) do
+    term
+    |> :erlang.term_to_binary()
+    |> Base.encode64()
+  end
+
+  defp deserialize(serialized) do
+    serialized
+    |> Base.decode64!()
+    |> :erlang.binary_to_term()
+  end
+
+  # Decodes `serialized` as `stale` before any child resource exists, runs `setup`, then
+  # `probe`. The marker proves the `ArgumentError` comes from the probe, not from the setup.
+  defp assert_stale_resource_argument_error(serialized, setup, probe) do
+    {output, status} =
+      MuSigSubprocess.run("""
+      alias Secp256k1.MuSig
+      stale = "#{serialized}" |> Base.decode64!() |> :erlang.binary_to_term()
+      true = is_reference(stale)
+      #{setup}
+      IO.puts("MUSIG_STALE_PROBE")
+      #{probe}
+      """)
+
+    assert status == 0, output
+    assert output =~ "MUSIG_STALE_PROBE\nMUSIG_SUBPROCESS_ARGUMENT_ERROR", output
   end
 end

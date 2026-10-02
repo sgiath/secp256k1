@@ -14,6 +14,8 @@ defmodule Secp256k1Test.Extrakeys do
   @point_two_x d("c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5")
   @point_two_compressed d("02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5")
   @curve_order d("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141")
+  # An x coordinate above the field prime p, so it encodes no curve point.
+  @field_overflow_x :binary.copy(<<255>>, 32)
 
   # BIP-341 wallet-test-vectors.json: scriptPubKey[1], keyPathSpending[0].inputSpending[1]
   # https://github.com/bitcoin/bips/blob/e35a46ecf3031c21dc7f7fdb694986789a3a8144/bip-0341/wallet-test-vectors.json
@@ -93,6 +95,41 @@ defmodule Secp256k1Test.Extrakeys do
     assert {:error, _reason} = Extrakeys.ec_pubkey_tweak_add(@generator_compressed, @curve_order)
     assert {:error, _reason} = Extrakeys.xonly_seckey_tweak_add(<<1::256>>, @curve_order)
     assert {:error, _reason} = Extrakeys.xonly_pubkey_tweak_add(@generator_x, @curve_order)
+  end
+
+  test "rejects right-sized invalid secret scalars" do
+    for seckey <- [<<0::256>>, @curve_order] do
+      assert_raise ArgumentError, fn -> Extrakeys.xonly_pubkey(seckey) end
+      assert_raise ArgumentError, fn -> Extrakeys.ec_seckey_tweak_add(seckey, <<1::256>>) end
+      assert_raise ArgumentError, fn -> Extrakeys.xonly_seckey_tweak_add(seckey, <<1::256>>) end
+    end
+  end
+
+  test "returns an error when tweaking right-sized malformed public keys" do
+    # Invalid prefix bytes, a point that is not on the curve, and an x coordinate at or above
+    # the field size.
+    full_pubkeys = [<<0::264>>, <<4, 0::512>>, <<2>> <> @field_overflow_x]
+
+    for pubkey <- full_pubkeys do
+      assert {:error, reason} = Extrakeys.ec_pubkey_tweak_add(pubkey, <<1::256>>)
+      assert is_binary(reason)
+    end
+
+    assert {:error, reason} = Extrakeys.xonly_pubkey_tweak_add(@field_overflow_x, <<1::256>>)
+    assert is_binary(reason)
+  end
+
+  test "tweak check returns false for malformed keys and out-of-range tweaks" do
+    {:ok, tweaked_x, parity} = Extrakeys.xonly_pubkey_tweak_add(@generator_x, <<1::256>>)
+    assert Extrakeys.xonly_pubkey_tweak_add_check(tweaked_x, parity, @generator_x, <<1::256>>)
+
+    for {tweaked, internal, tweak} <- [
+          {@field_overflow_x, @generator_x, <<1::256>>},
+          {tweaked_x, @field_overflow_x, <<1::256>>},
+          {tweaked_x, @generator_x, @curve_order}
+        ] do
+      assert Extrakeys.xonly_pubkey_tweak_add_check(tweaked, parity, internal, tweak) == false
+    end
   end
 
   test "accepts the zero tweak as the identity" do

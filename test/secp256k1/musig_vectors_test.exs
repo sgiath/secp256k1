@@ -9,96 +9,112 @@ defmodule Secp256k1Test.MuSigVectors do
   @curve_order 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
 
   @musig Vectors.load_musig2()
-  @key_agg @musig["key_agg"]
-  @nonce_agg @musig["nonce_agg"]
-
   @sign_verify Vectors.load_bip327_sign_verify()
   @tweak Vectors.load_bip327_tweak()
   @sig_agg Vectors.load_bip327_sig_agg()
 
-  # Fixture filters. Skipped cases are not reachable through the public API:
-  # - Messages that are not 32 bytes (BIP-327 "Empty message" and "38-byte message"): the
-  #   API signs and verifies `Secp256k1.hash()` messages only.
-  # - Sign errors that need an injected secret nonce ("signer's pubkey is not in the list of
-  #   pubkeys", which BIP-327 marks optional and libsecp256k1 does not check, and "Secnonce is
-  #   invalid"): `MuSig.nonce_gen/5` is the only way to obtain a secnonce.
-  @sign_verify_valid @sign_verify.valid
-                     |> Enum.with_index()
-                     |> Enum.filter(fn {vector, _index} -> byte_size(vector.msg) == 32 end)
-  @sign_error_reachable @sign_verify.sign_error
-                        |> Enum.with_index()
-                        |> Enum.filter(fn {vector, _index} ->
-                          vector.error["contrib"] in ["pubkey", "aggnonce"]
-                        end)
+  @cases %{
+    key_agg_valid: @musig.key_agg_valid,
+    key_agg_invalid: @musig.key_agg_invalid,
+    nonce_agg_valid: @musig.nonce_agg_valid,
+    nonce_agg_invalid: @musig.nonce_agg_invalid,
+    sign_verify_valid: @sign_verify.valid,
+    sign_error: @sign_verify.sign_error,
+    verify_fail: @sign_verify.verify_fail,
+    verify_error: @sign_verify.verify_error,
+    tweak_valid: @tweak.valid,
+    tweak_error: @tweak.error,
+    sig_agg_valid: @sig_agg.valid,
+    sig_agg_error: @sig_agg.error
+  }
+
+  # Case counts of the bundled fixtures, so a truncated fixture fails instead of running fewer
+  # cases.
+  @case_counts %{
+    key_agg_valid: 4,
+    key_agg_invalid: 5,
+    nonce_agg_valid: 2,
+    nonce_agg_invalid: 3,
+    sign_verify_valid: 6,
+    sign_error: 6,
+    verify_fail: 3,
+    verify_error: 2,
+    tweak_valid: 5,
+    tweak_error: 1,
+    sig_agg_valid: 4,
+    sig_agg_error: 1
+  }
+
+  # `{category, index, comment}` of every case not exercised, as listed in
+  # `test/vectors/README.md` ("Coverage"). They are not reachable through the public API:
+  # - Messages that are not 32 bytes: the API signs and verifies `Secp256k1.hash()` messages
+  #   only.
+  # - Sign errors that need an injected secret nonce (the signer's pubkey missing from the key
+  #   list, which BIP-327 marks optional and libsecp256k1 does not check, and an invalid
+  #   secnonce): `MuSig.nonce_gen/5` is the only way to obtain a secnonce.
+  @excluded [
+    {:sign_verify_valid, 4, "Empty message"},
+    {:sign_verify_valid, 5, "38-byte message"},
+    {:sign_error, 0,
+     "The signers pubkey is not in the list of pubkeys. This test case is optional: it can be " <>
+       "skipped by implementations that do not check that the signer's pubkey is included in " <>
+       "the list of pubkeys."},
+    {:sign_error, 5, "Secnonce is invalid which may indicate nonce reuse"}
+  ]
+
+  @sign_verify_valid for {vector, index} <- Enum.with_index(@sign_verify.valid),
+                         {:sign_verify_valid, index, vector.comment} not in @excluded,
+                         do: {vector, index}
+
+  @sign_error_reachable for {vector, index} <- Enum.with_index(@sign_verify.sign_error),
+                            {:sign_error, index, vector.comment} not in @excluded,
+                            do: {vector, index}
+
+  test "fixtures contain every expected case" do
+    counts = Map.new(@cases, fn {category, vectors} -> {category, length(vectors)} end)
+
+    assert counts == @case_counts
+  end
+
+  test "every excluded case names an existing fixture case" do
+    for {category, index, comment} <- @excluded do
+      assert %{comment: ^comment} = Enum.fetch!(@cases[category], index)
+    end
+  end
 
   test "MuSig2 key aggregation valid cases" do
-    pubkeys = @key_agg["pubkeys"]
-
-    for case_data <- @key_agg["valid"] do
-      keys = Enum.map(case_data["key_indices"], &d(Enum.at(pubkeys, &1)))
-      expected = d(case_data["expected"])
-
-      assert {:ok, agg_xonly, _cache} = MuSig.pubkey_agg(keys)
-      assert agg_xonly == expected
+    for vector <- @musig.key_agg_valid do
+      assert {:ok, agg_xonly, _cache} = MuSig.pubkey_agg(vector.pubkeys)
+      assert agg_xonly == vector.expected
     end
   end
 
-  test "MuSig2 key aggregation invalid pubkey cases" do
-    pubkeys = @key_agg["pubkeys"]
+  test "MuSig2 key aggregation invalid cases" do
+    for vector <- @musig.key_agg_invalid do
+      case vector.error do
+        "MUSIG_PUBKEY" ->
+          assert_raise ArgumentError, fn -> MuSig.pubkey_agg(vector.pubkeys) end
 
-    for case_data <- @key_agg["invalid"], case_data["error"] == "MUSIG_PUBKEY" do
-      keys = Enum.map(case_data["key_indices"], &d(Enum.at(pubkeys, &1)))
+        "MUSIG_TWEAK" ->
+          assert {:ok, _agg_xonly, cache} = MuSig.pubkey_agg(vector.pubkeys)
+          assert {:error, reason} = apply_tweaks(cache, vector.tweaks)
+          assert is_binary(reason)
 
-      assert_raise ArgumentError, fn ->
-        MuSig.pubkey_agg(keys)
+        error ->
+          flunk("unknown key aggregation error category: #{inspect(error)}")
       end
-    end
-  end
-
-  test "MuSig2 key aggregation invalid tweak cases" do
-    pubkeys = @key_agg["pubkeys"]
-    tweaks = @key_agg["tweaks"]
-
-    for case_data <- @key_agg["invalid"], case_data["error"] == "MUSIG_TWEAK" do
-      keys = Enum.map(case_data["key_indices"], &d(Enum.at(pubkeys, &1)))
-      tweak_count = case_data["tweak_indices_len"]
-
-      steps =
-        case_data["tweak_indices"]
-        |> Enum.take(tweak_count)
-        |> Enum.zip(Enum.take(case_data["is_xonly"], tweak_count))
-        |> Enum.map(fn {tweak_index, is_xonly} ->
-          {d(Enum.at(tweaks, tweak_index)), is_xonly == 1}
-        end)
-
-      assert {:ok, _agg_xonly, cache} = MuSig.pubkey_agg(keys)
-      assert {:error, reason} = apply_tweaks(cache, steps)
-      assert is_binary(reason)
     end
   end
 
   test "MuSig2 nonce aggregation valid cases" do
-    pubnonces = @nonce_agg["pubnonces"]
-
-    for case_data <- @nonce_agg["valid"] do
-      nonces = Enum.map(case_data["pnonce_indices"], &d(Enum.at(pubnonces, &1)))
-      expected = d(case_data["expected"])
-
-      aggnonce = MuSig.nonce_agg(nonces)
-
-      assert aggnonce == expected
+    for vector <- @musig.nonce_agg_valid do
+      assert MuSig.nonce_agg(vector.pubnonces) == vector.expected
     end
   end
 
   test "MuSig2 nonce aggregation invalid cases" do
-    pubnonces = @nonce_agg["pubnonces"]
-
-    for case_data <- @nonce_agg["invalid"] do
-      nonces = Enum.map(case_data["pnonce_indices"], &d(Enum.at(pubnonces, &1)))
-
-      assert_raise ArgumentError, fn ->
-        MuSig.nonce_agg(nonces)
-      end
+    for vector <- @musig.nonce_agg_invalid do
+      assert_raise ArgumentError, fn -> MuSig.nonce_agg(vector.pubnonces) end
     end
   end
 
@@ -121,16 +137,19 @@ defmodule Secp256k1Test.MuSigVectors do
     test "BIP-327 sign error ##{index}: #{vector.comment}" do
       vector = unquote(Macro.escape(vector))
 
-      case vector.error["contrib"] do
-        "pubkey" ->
+      case vector.error do
+        %{"type" => "invalid_contribution", "contrib" => "pubkey"} ->
           assert_raise ArgumentError, fn -> MuSig.pubkey_agg(vector.pubkeys) end
 
-        "aggnonce" ->
+        %{"type" => "invalid_contribution", "contrib" => "aggnonce"} ->
           cache = keyagg_cache(vector.pubkeys, [])
 
           assert_raise ArgumentError, fn ->
             MuSig.nonce_process(vector.aggnonce, vector.msg, cache)
           end
+
+        error ->
+          flunk("unknown sign error category: #{inspect(error)}")
       end
     end
   end
@@ -159,9 +178,15 @@ defmodule Secp256k1Test.MuSigVectors do
 
       # The invalid contribution is rejected where the verifier first parses it while
       # rebuilding the transcript.
-      case vector.error["contrib"] do
-        "pubnonce" -> assert_raise ArgumentError, fn -> MuSig.nonce_agg(vector.pubnonces) end
-        "pubkey" -> assert_raise ArgumentError, fn -> MuSig.pubkey_agg(vector.pubkeys) end
+      case vector.error do
+        %{"type" => "invalid_contribution", "contrib" => "pubnonce"} ->
+          assert_raise ArgumentError, fn -> MuSig.nonce_agg(vector.pubnonces) end
+
+        %{"type" => "invalid_contribution", "contrib" => "pubkey"} ->
+          assert_raise ArgumentError, fn -> MuSig.pubkey_agg(vector.pubkeys) end
+
+        error ->
+          flunk("unknown verify error category: #{inspect(error)}")
       end
 
       # `partial_sig_verify/5` rejects the same contribution when it is passed directly,
@@ -191,9 +216,15 @@ defmodule Secp256k1Test.MuSigVectors do
     test "BIP-327 tweak error ##{index}: #{vector.comment}" do
       vector = unquote(Macro.escape(vector))
 
-      assert {:ok, _agg_xonly, cache} = MuSig.pubkey_agg(vector.pubkeys)
-      assert {:error, reason} = apply_tweaks(cache, vector.tweaks)
-      assert is_binary(reason)
+      case vector.error do
+        %{"type" => "value"} ->
+          assert {:ok, _agg_xonly, cache} = MuSig.pubkey_agg(vector.pubkeys)
+          assert {:error, reason} = apply_tweaks(cache, vector.tweaks)
+          assert is_binary(reason)
+
+        error ->
+          flunk("unknown tweak error category: #{inspect(error)}")
+      end
     end
   end
 
@@ -216,10 +247,17 @@ defmodule Secp256k1Test.MuSigVectors do
   for {vector, index} <- Enum.with_index(@sig_agg.error) do
     test "BIP-327 signature aggregation error ##{index}: #{vector.comment}" do
       vector = unquote(Macro.escape(vector))
-      cache = keyagg_cache(vector.pubkeys, vector.tweaks)
-      session = MuSig.nonce_process(vector.aggnonce, vector.msg, cache)
 
-      assert_raise ArgumentError, fn -> MuSig.partial_sig_agg(session, vector.psigs) end
+      case vector.error do
+        %{"type" => "invalid_contribution", "contrib" => "psig"} ->
+          cache = keyagg_cache(vector.pubkeys, vector.tweaks)
+          session = MuSig.nonce_process(vector.aggnonce, vector.msg, cache)
+
+          assert_raise ArgumentError, fn -> MuSig.partial_sig_agg(session, vector.psigs) end
+
+        error ->
+          flunk("unknown signature aggregation error category: #{inspect(error)}")
+      end
     end
   end
 

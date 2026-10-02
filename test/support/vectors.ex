@@ -11,16 +11,62 @@ defmodule Secp256k1Test.Vectors do
     |> Enum.map(&parse_bip340_line/1)
   end
 
+  # Returns the parsed cases with the fixture's declared `numberOfTests`.
   def load_wycheproof_ecdsa do
-    @vectors_dir
-    |> Path.join("wycheproof_ecdsa.json")
-    |> File.read!()
-    |> Jason.decode!()
-    |> Map.fetch!("testGroups")
-    |> Enum.flat_map(&parse_wycheproof_group/1)
+    vectors = load_json("wycheproof_ecdsa.json")
+    groups = Map.fetch!(vectors, "testGroups")
+
+    %{
+      number_of_tests: Map.fetch!(vectors, "numberOfTests"),
+      tests: Enum.flat_map(groups, &parse_wycheproof_group/1)
+    }
   end
 
-  def load_musig2, do: load_json("musig2.json")
+  # `musig2.json` mirrors the libsecp256k1 C structs; only the first `*_len` entries of an
+  # index array are meaningful (see `vectors/README.md`).
+  def load_musig2 do
+    %{"key_agg" => key_agg, "nonce_agg" => nonce_agg} = load_json("musig2.json")
+    pubkeys = decode_hex_list(key_agg["pubkeys"])
+    tweaks = decode_hex_list(key_agg["tweaks"])
+    pubnonces = decode_hex_list(nonce_agg["pubnonces"])
+
+    key_agg_pubkeys = fn test_case ->
+      pick(pubkeys, take_len!(test_case["key_indices"], test_case["key_indices_len"]))
+    end
+
+    %{
+      key_agg_valid:
+        Enum.map(key_agg["valid"], fn test_case ->
+          %{pubkeys: key_agg_pubkeys.(test_case), expected: decode_hex(test_case["expected"])}
+        end),
+      key_agg_invalid:
+        Enum.map(key_agg["invalid"], fn test_case ->
+          count = test_case["tweak_indices_len"]
+
+          %{
+            pubkeys: key_agg_pubkeys.(test_case),
+            tweaks:
+              tweak_steps(
+                tweaks,
+                take_len!(test_case["tweak_indices"], count),
+                Enum.map(take_len!(test_case["is_xonly"], count), &(&1 == 1))
+              ),
+            error: test_case["error"]
+          }
+        end),
+      nonce_agg_valid:
+        Enum.map(nonce_agg["valid"], fn test_case ->
+          %{
+            pubnonces: pick(pubnonces, test_case["pnonce_indices"]),
+            expected: decode_hex(test_case["expected"])
+          }
+        end),
+      nonce_agg_invalid:
+        Enum.map(nonce_agg["invalid"], fn test_case ->
+          %{pubnonces: pick(pubnonces, test_case["pnonce_indices"])}
+        end)
+    }
+  end
 
   def load_bip327_sign_verify do
     vectors = load_json("bip327_sign_verify.json")
@@ -33,8 +79,9 @@ defmodule Secp256k1Test.Vectors do
       %{
         pubkeys: pick(pubkeys, test_case["key_indices"]),
         pubnonces: pick(pubnonces, test_case["nonce_indices"] || []),
-        aggnonce: test_case["aggnonce_index"] && Enum.at(aggnonces, test_case["aggnonce_index"]),
-        msg: Enum.at(msgs, test_case["msg_index"]),
+        aggnonce:
+          test_case["aggnonce_index"] && Enum.fetch!(aggnonces, test_case["aggnonce_index"]),
+        msg: Enum.fetch!(msgs, test_case["msg_index"]),
         signer_index: test_case["signer_index"],
         psig: test_case["sig"] && decode_hex(test_case["sig"]),
         error: test_case["error"],
@@ -65,7 +112,7 @@ defmodule Secp256k1Test.Vectors do
         pubnonces: pick(pubnonces, test_case["nonce_indices"]),
         aggnonce: decode_hex(vectors["aggnonce"]),
         msg: decode_hex(vectors["msg"]),
-        tweaks: tweak_steps(tweaks, test_case),
+        tweaks: tweak_steps(tweaks, test_case["tweak_indices"], test_case["is_xonly"]),
         signer_index: test_case["signer_index"],
         psig: test_case["expected"] && decode_hex(test_case["expected"]),
         error: test_case["error"],
@@ -92,7 +139,7 @@ defmodule Secp256k1Test.Vectors do
         pubnonces: pick(pubnonces, test_case["nonce_indices"]),
         aggnonce: decode_hex(test_case["aggnonce"]),
         msg: decode_hex(vectors["msg"]),
-        tweaks: tweak_steps(tweaks, test_case),
+        tweaks: tweak_steps(tweaks, test_case["tweak_indices"], test_case["is_xonly"]),
         psigs: pick(psigs, test_case["psig_indices"]),
         expected: test_case["expected"] && decode_hex(test_case["expected"]),
         error: test_case["error"],
@@ -114,13 +161,26 @@ defmodule Secp256k1Test.Vectors do
   end
 
   # Each step is `{tweak, is_xonly}`, applied in order to the aggregate key.
-  defp tweak_steps(tweaks, test_case) do
+  defp tweak_steps(tweaks, tweak_indices, is_xonly)
+       when length(tweak_indices) == length(is_xonly) do
     tweaks
-    |> pick(test_case["tweak_indices"])
-    |> Enum.zip(test_case["is_xonly"])
+    |> pick(tweak_indices)
+    |> Enum.zip(is_xonly)
   end
 
-  defp pick(values, indices), do: Enum.map(indices, &Enum.at(values, &1))
+  defp tweak_steps(_tweaks, tweak_indices, is_xonly) do
+    raise ArgumentError,
+          "tweak vector has #{length(tweak_indices)} tweak indices " <>
+            "but #{length(is_xonly)} is_xonly flags"
+  end
+
+  defp take_len!(values, len) when length(values) >= len, do: Enum.take(values, len)
+
+  defp take_len!(values, len) do
+    raise ArgumentError, "vector declares #{len} entries but has #{length(values)}"
+  end
+
+  defp pick(values, indices), do: Enum.map(indices, &Enum.fetch!(values, &1))
 
   defp decode_hex_list(values), do: Enum.map(values, &decode_hex/1)
 
@@ -150,7 +210,7 @@ defmodule Secp256k1Test.Vectors do
       group
       |> Map.fetch!("publicKey")
       |> Map.fetch!("uncompressed")
-      |> decode_hex_optional()
+      |> decode_hex()
 
     group
     |> Map.fetch!("tests")
@@ -158,8 +218,8 @@ defmodule Secp256k1Test.Vectors do
       %{
         tc_id: test["tcId"],
         comment: test["comment"],
-        msg: decode_hex_optional(test["msg"]) || <<>>,
-        sig: decode_hex_optional(test["sig"]),
+        msg: decode_hex(test["msg"]),
+        sig: decode_hex(test["sig"]),
         result: test["result"],
         pubkey: pubkey,
         flags: test["flags"] || []

@@ -91,7 +91,7 @@ defmodule Secp256k1Test.ECDH do
       ECDH.ecdh(alice_seckey, <<1::256>>)
     end
 
-    assert ECDH.ecdh(alice_seckey, :binary.copy(<<0>>, 33)) ==
-             {:error, "secp256k1_ec_pubkey_parse failed"}
+    assert {:error, reason} = ECDH.ecdh(alice_seckey, :binary.copy(<<0>>, 33))
+    assert is_binary(reason)
   end
 end
