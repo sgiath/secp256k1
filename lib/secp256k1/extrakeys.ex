@@ -6,16 +6,25 @@ defmodule Secp256k1.Extrakeys do
   import Secp256k1.Guards
 
   @doc """
-  Checks whether a 32-byte binary is a valid secp256k1 secret-key scalar.
+  Checks whether a term is a valid secp256k1 secret key.
+
+  A valid secret key is a 32-byte binary encoding a scalar greater than zero and smaller than
+  the curve order. Returns `false` for any other term, including wrong-sized binaries and
+  non-binary terms.
   """
-  @spec valid_seckey?(Secp256k1.seckey()) :: boolean()
+  @spec valid_seckey?(term()) :: boolean()
   def valid_seckey?(seckey) when is_seckey(seckey), do: Secp256k1.NIF.valid_seckey?(seckey)
+  def valid_seckey?(_seckey), do: false
 
   @doc """
-  Checks whether an x-only, compressed, or uncompressed public key can be parsed.
+  Checks whether a term is a parsable x-only (32-byte), compressed (33-byte), or uncompressed
+  (65-byte) public key.
+
+  Returns `false` for any other term, including wrong-sized binaries and non-binary terms.
   """
-  @spec valid_pubkey?(Secp256k1.pubkey()) :: boolean()
+  @spec valid_pubkey?(term()) :: boolean()
   def valid_pubkey?(pubkey) when is_pubkey(pubkey), do: Secp256k1.NIF.valid_pubkey?(pubkey)
+  def valid_pubkey?(_pubkey), do: false
 
   @doc """
   Derives or converts an x-only public key.

@@ -39,6 +39,22 @@ defmodule Secp256k1Test.Extrakeys do
     assert_raise FunctionClauseError, fn -> Extrakeys.xonly_pubkey(<<1>>) end
   end
 
+  test "key predicates return false for wrong-shaped terms" do
+    assert Extrakeys.valid_seckey?(<<1::256>>)
+    assert Extrakeys.valid_pubkey?(@generator_compressed)
+
+    for term <- [<<1>>, <<1::248>>, <<1::264>>, <<1::7>>, nil, :seckey, 1, [<<1::256>>]] do
+      refute Extrakeys.valid_seckey?(term)
+    end
+
+    # 31, 34, 64, and 66 bytes surround the accepted 32/33/65-byte encodings.
+    wrong_size_pubkeys = [<<2, 1::240>>, <<2, 1::264>>, <<4, 1::504>>, <<4, 1::520>>]
+
+    for term <- wrong_size_pubkeys ++ [<<1::7>>, nil, :pubkey, 1, {@generator_x}] do
+      refute Extrakeys.valid_pubkey?(term)
+    end
+  end
+
   test "converts a compressed public key to x-only form" do
     assert Extrakeys.xonly_pubkey(@generator_compressed) == @generator_x
     assert Extrakeys.xonly_pubkey(@negated_generator_compressed) == @generator_x
