@@ -564,8 +564,10 @@ defmodule Secp256k1.MuSigTest do
     terms = Enum.map([cache, secnonce, session], &serialize/1)
     [cache_term, secnonce_term, session_term] = terms
 
-    # In this VM the serialized handles decode to the live resources they were taken from.
+    # In this VM the serialized handles decode to the live resources they were taken from. The
+    # originals must stay referenced until decoded: if a GC frees one first, its handle is stale.
     [decoded_cache, decoded_secnonce, decoded_session] = Enum.map(terms, &deserialize/1)
+    assert [decoded_cache, decoded_secnonce, decoded_session] == [cache, secnonce, session]
     assert MuSig.pubkey_get(decoded_cache) == MuSig.pubkey_get(cache)
 
     partial_sig = MuSig.partial_sign(decoded_secnonce, seckey, cache, decoded_session)
