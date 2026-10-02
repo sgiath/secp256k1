@@ -9,63 +9,82 @@ permissions:
 
 jobs:
   check:
-    name: check (${{ matrix.os }}, Elixir ${{ matrix.beam.elixir }}, OTP ${{ matrix.beam.otp }})
+    name: check (${{ matrix.os }}, Elixir ${{ matrix.elixir }}, OTP ${{ matrix.otp }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      # Every supported Elixir with every OTP it supports:
+      # https://hexdocs.pm/elixir/compatibility-and-deprecations.html
+      # ubuntu-24.04 is pinned because setup-beam provides OTP 24-25 only up to that
+      # image; macOS (setup-beam: OTP 25+) covers the oldest and newest combos.
+      # `full: false` rows build the NIF and run the full test suite instead of
+      # `mix check`: dev-only tooling (ex_check, mix_audit's yaml_elixir,
+      # mix_test_watch) requires Elixir 1.17 or 1.18.
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        beam:
-          # Minimum supported Elixir (mix.exs `elixir: "~> 1.15"`) with a compatible OTP.
-          # Dev-only tooling (ex_check, mix_test_watch, mix_audit) requires a newer Elixir,
-          # so this entry builds the NIF and runs the full test suite instead of `mix check`.
-          - elixir: "1.15"
-            otp: "26"
-            full: false
-          # Latest Elixir/OTP: full `mix check`.
-          - elixir: "1.20"
-            otp: "29"
-            full: true
+        include:
+          - { os: ubuntu-24.04, elixir: "1.16", otp: "24", full: false }
+          - { os: ubuntu-24.04, elixir: "1.16", otp: "25", full: false }
+          - { os: ubuntu-24.04, elixir: "1.16", otp: "26", full: false }
+          - { os: ubuntu-24.04, elixir: "1.17", otp: "25", full: false }
+          - { os: ubuntu-24.04, elixir: "1.17", otp: "26", full: false }
+          - { os: ubuntu-24.04, elixir: "1.17", otp: "27", full: false }
+          - { os: ubuntu-24.04, elixir: "1.18", otp: "25", full: true }
+          - { os: ubuntu-24.04, elixir: "1.18", otp: "26", full: true }
+          - { os: ubuntu-24.04, elixir: "1.18", otp: "27", full: true }
+          - { os: ubuntu-24.04, elixir: "1.19", otp: "26", full: true }
+          - { os: ubuntu-24.04, elixir: "1.19", otp: "27", full: true }
+          - { os: ubuntu-24.04, elixir: "1.19", otp: "28", full: true }
+          - { os: ubuntu-24.04, elixir: "1.20", otp: "27", full: true }
+          - { os: ubuntu-24.04, elixir: "1.20", otp: "28", full: true }
+          - { os: ubuntu-24.04, elixir: "1.20", otp: "29", full: true }
+          - { os: macos-latest, elixir: "1.16", otp: "25", full: false }
+          - { os: macos-latest, elixir: "1.20", otp: "29", full: true }
     env:
       SECP256K1_NIF_WERROR: "1"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Same clang-format release as the devenv shell (nixpkgs clang-tools in
+      # devenv.lock), so the git hook and CI agree on the output.
+      - name: clang-format
+        if: runner.os == 'Linux' && matrix.elixir == '1.20' && matrix.otp == '29'
+        run: pipx run --spec clang-format==21.1.8 clang-format --dry-run --Werror c_src/*.c c_src/*.h
 
       - id: beam
-        uses: erlef/setup-beam@v1
+        uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         with:
-          otp-version: ${{ matrix.beam.otp }}
-          elixir-version: ${{ matrix.beam.elixir }}
+          otp-version: ${{ matrix.otp }}
+          elixir-version: ${{ matrix.elixir }}
 
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             deps
             _build
-          key: mix-${{ runner.os }}-${{ runner.arch }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ matrix.beam.full && 'full' || 'min' }}-${{ hashFiles('mix.lock') }}
+          key: mix-${{ runner.os }}-${{ runner.arch }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ matrix.full && 'full' || 'min' }}-${{ hashFiles('mix.lock') }}
           restore-keys: |
-            mix-${{ runner.os }}-${{ runner.arch }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ matrix.beam.full && 'full' || 'min' }}-
+            mix-${{ runner.os }}-${{ runner.arch }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ matrix.full && 'full' || 'min' }}-
 
       - name: Install prettier
-        if: matrix.beam.full
+        if: matrix.full
         run: npm install --global prettier@3.8.3
 
       - name: Fetch dependencies
-        if: matrix.beam.full
+        if: matrix.full
         run: mix deps.get
 
       - name: Fetch test dependencies
-        if: ${{ !matrix.beam.full }}
+        if: ${{ !matrix.full }}
         run: mix deps.get --only test
         env:
           MIX_ENV: test
 
       - name: mix check
-        if: matrix.beam.full
+        if: matrix.full
         run: mix check
 
       - name: mix test
-        if: ${{ !matrix.beam.full }}
+        if: ${{ !matrix.full }}
         run: mix test --include expensive
         env:
           MIX_ENV: test
@@ -78,15 +97,15 @@ jobs:
       CC: gcc
       SECP256K1_NIF_SANITIZE: "1"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - id: beam
-        uses: erlef/setup-beam@v1
+        uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         with:
           otp-version: "29"
           elixir-version: "1.20"
 
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             deps
@@ -121,9 +140,9 @@ jobs:
     name: package (hex.build --unpack)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: erlef/setup-beam@v1
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         with:
           otp-version: "29"
           elixir-version: "1.20"

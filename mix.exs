@@ -10,7 +10,7 @@ defmodule Secp256k1.MixProject do
       version: @version,
 
       # Elixir
-      elixir: "~> 1.15",
+      elixir: "~> 1.16",
       build_embedded: Mix.env() == :prod,
       start_permanent: Mix.env() == :prod,
       consolidate_protocols: Mix.env() != :test,
