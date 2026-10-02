@@ -84,6 +84,7 @@ defmodule Secp256k1.MixProject do
         "README.md": [filename: "readme", title: "Overview"],
         "docs/usage.livemd": [filename: "usage", title: "Usage Guide"],
         "docs/musig.livemd": [filename: "musig", title: "MuSig Guide"],
+        "usage-rules.md": [filename: "usage-rules", title: "Usage Rules"],
         "CHANGELOG.md": [filename: "changelog", title: "Changelog"],
         LICENSE: [filename: "license", title: "License"]
       ],

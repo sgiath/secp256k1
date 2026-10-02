@@ -164,7 +164,8 @@ end
 {:ok, agg_pubkey, cache} = MuSig.pubkey_agg(pubkeys)
 
 # Optional tweaks (every signer, same tweaks, same order); continue with the returned cache
-{:ok, <<_parity, tweaked_xonly_pubkey::binary>>, cache} = MuSig.pubkey_xonly_tweak_add(cache, tweak)
+# and verify the final signature against the tweaked key
+{:ok, <<_parity, agg_pubkey::binary>>, cache} = MuSig.pubkey_xonly_tweak_add(cache, tweak)
 
 # 2. Generate nonces (each signer, with its own seckey, the matching pubkey from `pubkeys`,
 #    and the msg and final cache when known)
@@ -185,7 +186,7 @@ true = MuSig.partial_sig_verify(partial_sig, pubnonce, pubkey, cache, session)
 # 7. Aggregate the verified partial signatures
 final_sig = MuSig.partial_sig_agg(session, partial_sigs)
 
-# Verify as standard Schnorr (against tweaked_xonly_pubkey when tweaked)
+# Verify as standard Schnorr against the final (tweaked, when tweaked) aggregate key
 true = Secp256k1.schnorr_valid?(final_sig, msg, agg_pubkey)
 ```
 

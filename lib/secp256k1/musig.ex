@@ -116,14 +116,36 @@ defmodule Secp256k1.MuSig do
 
   import Secp256k1.Guards
 
+  @typedoc """
+  Key aggregation cache resource returned by `pubkey_agg/1` and the tweak functions.
+
+  Node-local and immutable: tweaking returns a new cache. Cannot be serialized.
+  """
   @opaque keyagg_cache :: reference()
+
+  @typedoc """
+  Signing session resource returned by `nonce_process/3`.
+
+  Node-local; derived from the aggregate nonce and remembers the message and key aggregation
+  cache it was processed from. Cannot be serialized.
+  """
   @opaque session :: reference()
+
+  @typedoc """
+  One-use secret nonce resource returned by `nonce_gen/5`.
+
+  Node-local and shared by reference: `partial_sign/4` consumes it for every holder. Never
+  persist, send to another node, or reuse it.
+  """
   @opaque secnonce :: reference()
-  # 66 bytes
+
+  @typedoc "Serialized 66-byte public nonce from `nonce_gen/5`; safe to transmit."
   @type pubnonce :: <<_::528>>
-  # 66 bytes
+
+  @typedoc "Serialized 66-byte aggregate nonce from `nonce_agg/1`; safe to transmit."
   @type aggnonce :: <<_::528>>
-  # 32 bytes
+
+  @typedoc "Serialized 32-byte partial signature from `partial_sign/4`; safe to transmit."
   @type partial_sig :: <<_::256>>
 
   @doc """
