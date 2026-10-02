@@ -99,26 +99,57 @@ NIF_REQUIRED_CPPFLAGS := -I$(ERTS_INCLUDE_DIR) -I$(LIB_SRC_DIR)/include
 NIF_REQUIRED_CFLAGS := -fPIC
 NIF_REQUIRED_LDFLAGS := -shared
 
-# add macOS specific LDFLAGS
 # `uname -s` describes the build host, not the build target, so it must not be
 # used on its own to pick target specific flags. When cross compiling (e.g.
-# building for Nerves/Linux from macOS) the toolchain sets CROSSCOMPILE, and
-# passing `-undefined dynamic_lookup` to the target's GNU ld makes it look for a
-# file named `dynamic_lookup` and fail with "C compiler cannot create
-# executables". Only add the flag for native macOS builds.
+# building for Nerves/Linux from macOS) the toolchain sets CROSSCOMPILE, so
+# only a native build on a macOS host targets Darwin. Passing
+# `-undefined dynamic_lookup` to the target's GNU ld makes it look for a file
+# named `dynamic_lookup` and fail with "C compiler cannot create executables".
 OS := $(shell uname -s)
+TARGET_DARWIN :=
 ifeq ($(CROSSCOMPILE),)
   ifeq ($(OS), Darwin)
-    NIF_REQUIRED_LDFLAGS += -undefined dynamic_lookup
+    TARGET_DARWIN := yes
   endif
 endif
 
+ifeq ($(TARGET_DARWIN),yes)
+  NIF_REQUIRED_LDFLAGS += -undefined dynamic_lookup
+endif
+
+# --- Hardening (first-party NIF code and the NIF link only) ---
+# Defense-in-depth baseline, kept out of the user variables so replacing CFLAGS
+# or LDFLAGS keeps it. It comes before the user flags, so a later user flag
+# (e.g. -fno-stack-protector or -Wl,-z,lazy) still wins for an odd toolchain.
+# _FORTIFY_SOURCE is added only when CFLAGS optimize (glibc warns otherwise,
+# which -Werror turns into an error) and only when neither the user flags nor
+# the compiler (e.g. Ubuntu's or Nix's gcc) already define it, so a stronger
+# default level is kept and there is no redefinition warning. RELRO and
+# immediate binding are ELF linker options, so they are skipped for Darwin.
+NIF_HARDEN_CPPFLAGS :=
+NIF_HARDEN_CFLAGS := -fstack-protector-strong
+NIF_HARDEN_LDFLAGS :=
+NIF_OPT_LEVEL := $(lastword $(filter -O%,$(CFLAGS)))
+ifneq ($(filter-out -O0,$(NIF_OPT_LEVEL)),)
+  ifeq ($(shell $(CC) $(CPPFLAGS) $(CFLAGS) -dM -E -x c /dev/null 2>/dev/null | grep -q _FORTIFY_SOURCE && echo defined),)
+    NIF_HARDEN_CPPFLAGS := -D_FORTIFY_SOURCE=2
+  endif
+endif
+ifneq ($(TARGET_DARWIN),yes)
+  NIF_HARDEN_LDFLAGS := -Wl,-z,relro -Wl,-z,now
+endif
+
 # --- Opt-in developer/CI flags (first-party NIF code only) ---
-# SECP256K1_NIF_WERROR=1   turn warnings into errors when compiling c_src/*.c.
-#                          Never applied to the upstream configure/make.
-# SECP256K1_NIF_SANITIZE=1 compile and link the NIF with ASan + UBSan. The BEAM
-#                          is not instrumented, so the ASan runtime must be
-#                          preloaded, e.g. LD_PRELOAD=$(gcc -print-file-name=libasan.so).
+# SECP256K1_NIF_WERROR=1          turn warnings into errors when compiling
+#                                 c_src/*.c. Never applied to the upstream
+#                                 configure/make.
+# SECP256K1_NIF_SANITIZE=1        compile and link the NIF with ASan + UBSan.
+#                                 The BEAM is not instrumented, so the ASan
+#                                 runtime must be preloaded, e.g.
+#                                 LD_PRELOAD=$(gcc -print-file-name=libasan.so).
+# SECP256K1_NIF_FAULT_INJECTION=1 define SECP256K1_NIF_FAULT_INJECTION, compiling
+#                                 in the test-only native fault hooks. Never
+#                                 use it for a release build.
 NIF_WERROR_FLAGS :=
 ifeq ($(SECP256K1_NIF_WERROR),1)
   NIF_WERROR_FLAGS := -Werror
@@ -129,8 +160,13 @@ ifeq ($(SECP256K1_NIF_SANITIZE),1)
   NIF_SANITIZE_FLAGS := -fsanitize=address,undefined -fno-omit-frame-pointer -g
 endif
 
-NIF_CPPFLAGS = $(NIF_REQUIRED_CPPFLAGS) $(CPPFLAGS)
-NIF_CFLAGS = $(CFLAGS) $(NIF_REQUIRED_CFLAGS) $(NIF_WERROR_FLAGS) $(NIF_SANITIZE_FLAGS)
+NIF_FAULT_INJECTION_FLAGS :=
+ifeq ($(SECP256K1_NIF_FAULT_INJECTION),1)
+  NIF_FAULT_INJECTION_FLAGS := -DSECP256K1_NIF_FAULT_INJECTION
+endif
+
+NIF_CPPFLAGS = $(NIF_REQUIRED_CPPFLAGS) $(NIF_HARDEN_CPPFLAGS) $(CPPFLAGS) $(NIF_FAULT_INJECTION_FLAGS)
+NIF_CFLAGS = $(NIF_HARDEN_CFLAGS) $(CFLAGS) $(NIF_REQUIRED_CFLAGS) $(NIF_WERROR_FLAGS) $(NIF_SANITIZE_FLAGS)
 NIF_LDFLAGS = $(CFLAGS) $(NIF_REQUIRED_CFLAGS) $(NIF_SANITIZE_FLAGS)
 
 # --- secp256k1 Library Options ---
@@ -161,9 +197,13 @@ NIF_BUILD_CONFIG_LINES = \
 	'NIF_REQUIRED_CPPFLAGS=$(call sq,$(NIF_REQUIRED_CPPFLAGS))' \
 	'NIF_REQUIRED_CFLAGS=$(call sq,$(NIF_REQUIRED_CFLAGS))' \
 	'NIF_REQUIRED_LDFLAGS=$(call sq,$(NIF_REQUIRED_LDFLAGS))' \
+	'NIF_HARDEN_CPPFLAGS=$(call sq,$(NIF_HARDEN_CPPFLAGS))' \
+	'NIF_HARDEN_CFLAGS=$(call sq,$(NIF_HARDEN_CFLAGS))' \
+	'NIF_HARDEN_LDFLAGS=$(call sq,$(NIF_HARDEN_LDFLAGS))' \
 	'NIF_SOURCES=$(call sq,$(NIF_SOURCES))' \
 	'SECP256K1_NIF_WERROR=$(call sq,$(NIF_WERROR_FLAGS))' \
-	'SECP256K1_NIF_SANITIZE=$(call sq,$(NIF_SANITIZE_FLAGS))'
+	'SECP256K1_NIF_SANITIZE=$(call sq,$(NIF_SANITIZE_FLAGS))' \
+	'SECP256K1_NIF_FAULT_INJECTION=$(call sq,$(NIF_FAULT_INJECTION_FLAGS))'
 
 # $(call write_if_changed,FILE,LINES)
 # The temporary name is per-process because Mix may run make concurrently for
@@ -194,8 +234,16 @@ NIF_HEADERS = $(wildcard $(SRC_DIR)/*.h)
 # autotools refuses a VPATH build from a configured source tree.
 EXTRACT_STAMP = $(LIB_SRC_DIR)/.source-$(LIB_VERSION)-$(LIB_SHA256)
 
+# Lock directory serializing extraction of the shared upstream tree. It lives
+# under the ignored build root, which distclean removes.
+EXTRACT_LOCK = $(SRC_DIR)/build/extract.lock
+
 # Remove a target whose recipe failed so a partial output is never reused.
+# The extraction stamp is exempt: it only ever appears together with its
+# complete tree, and a failed or interrupted build that merely waited for the
+# lock must not delete the stamp a concurrent build published.
 .DELETE_ON_ERROR:
+.PRECIOUS: $(EXTRACT_STAMP)
 
 # --- Default Target ---
 .PHONY: all
@@ -223,7 +271,7 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c $(NIF_HEADERS) $(EXTRACT_STAMP) $(NIF_BUILD_CONFI
 
 $(NIF_BUILT): $(NIF_OBJECTS) $(LIB_STATIC_LIB) $(NIF_BUILD_CONFIG) $(THIS_MAKEFILE)
 	$(ECHO) "  LD       $@"
-	@$(call atomic_output,$@,$(CC) $(NIF_LDFLAGS) -o "$$tmp" $(NIF_OBJECTS) $(LIB_STATIC_LIB) $(NIF_REQUIRED_LDFLAGS) $(LDFLAGS) $(LIBS))
+	@$(call atomic_output,$@,$(CC) $(NIF_LDFLAGS) -o "$$tmp" $(NIF_OBJECTS) $(LIB_STATIC_LIB) $(NIF_REQUIRED_LDFLAGS) $(NIF_HARDEN_LDFLAGS) $(LDFLAGS) $(LIBS))
 
 # Copies the NIF into the Mix app's priv directory when it differs, replacing
 # it with one rename. A priv symlink is a leftover from a top-level priv/
@@ -255,20 +303,49 @@ $(LIB_BUILD_ROOT)/Makefile: $(EXTRACT_STAMP) $(LIB_BUILD_CONFIG)
 	@$(call logged,$(LIB_CONFIGURE_LOG),cd $(LIB_BUILD_ROOT) && $(LIB_SRC_FROM_BUILD)/configure $(CONFIG_OPTS))
 
 # Verification happens at extraction time, not on every no-op compile.
-# The tarball is unpacked into a unique sibling directory (same filesystem, so
-# the rename is atomic) with the stamp already inside, so the tree and its stamp
-# appear together. The old stamp goes before the old tree so an interrupted
-# removal is never mistaken for a verified tree. If a concurrent make installs
-# its tree between our rm and mv, mv nests our copy inside it; theirs (same
-# verified tarball) is kept and cleanup_paths removes the nested copy.
+# Builds for different app paths share the extracted tree, so extraction runs
+# under $(EXTRACT_LOCK), taken with an atomic mkdir and holding a pid.<PID>
+# file that names its holder (the recipe shell). A waiter that finds the holder
+# gone (kill -0 fails) breaks the lock: only one waiter can remove the pid file,
+# and rmdir removes the directory only while it is empty, so a lock another
+# build has since taken is never removed. Waiting is bounded in case a reused
+# PID keeps a stale lock looking alive. The exit and signal traps release the
+# lock and remove a partial extraction.
+# A build that waited finds the tree and stamp the holder just published and
+# reuses them, so it never deletes a tree another build is compiling against.
+# Otherwise the tarball is verified and unpacked into a unique sibling
+# directory (same filesystem, so the rename is atomic) with the stamp already
+# inside, so the tree and its stamp appear together. The old stamp goes before
+# the old tree so an interrupted removal is never mistaken for a verified tree.
 $(EXTRACT_STAMP): $(LIB_TARBALL)
 	$(ECHO) "  EXTRACT  libsecp256k1 ($(LIB_VERSION))"
-	@new=""; \
-	cleanup_paths() { if [ -n "$$new" ]; then rm -rf "$$new" || :; fi; }; \
+	@lock="$(EXTRACT_LOCK)"; locked=""; new=""; waited=0; \
+	cleanup_paths() { \
+		if [ -n "$$new" ]; then rm -rf "$$new" || :; fi; \
+		if [ -n "$$locked" ]; then rm -f "$$lock/pid.$$$$"; rmdir "$$lock" || :; fi; \
+	}; \
 	on_exit() { status=$$?; trap - 0 1 2 15; cleanup_paths; exit "$$status"; }; \
 	on_signal() { trap - 0 1 2 15; cleanup_paths; exit 1; }; \
 	trap on_exit 0; \
 	trap on_signal 1 2 15; \
+	mkdir -p "$${lock%/*}" || exit 1; \
+	until mkdir "$$lock" 2>/dev/null; do \
+		for holder in "$$lock"/pid.*; do \
+			if [ -f "$$holder" ] && ! kill -0 "$${holder##*/pid.}" 2>/dev/null && \
+				rm "$$holder" 2>/dev/null; then \
+				rmdir "$$lock" 2>/dev/null || :; \
+			fi; \
+		done; \
+		waited=$$((waited + 1)); \
+		if [ "$$waited" -gt 300 ]; then \
+			echo "libsecp256k1: waited 300 s for $$lock; remove it if no other build is running" >&2; \
+			exit 1; \
+		fi; \
+		sleep 1; \
+	done; \
+	locked=1; \
+	: > "$$lock/pid.$$$$" || exit 1; \
+	if [ -f "$@" ] && [ ! "$(LIB_TARBALL)" -nt "$@" ]; then exit 0; fi; \
 	if command -v sha256sum >/dev/null 2>&1; then actual=$$(sha256sum "$(LIB_TARBALL)" | awk '{print $$1}'); \
 	elif command -v shasum >/dev/null 2>&1; then actual=$$(shasum -a 256 "$(LIB_TARBALL)" | awk '{print $$1}'); \
 	else echo "libsecp256k1: need sha256sum or shasum on PATH" >&2; exit 1; fi; \
@@ -283,8 +360,7 @@ $(EXTRACT_STAMP): $(LIB_TARBALL)
 	rm -f "$@" && \
 	rm -rf "$(LIB_SRC_DIR)" && \
 	mv "$$new" "$(LIB_SRC_DIR)" && \
-	new="$(LIB_SRC_DIR)/$${new##*/}" && \
-	if [ ! -d "$$new" ]; then new=""; fi
+	new=""
 
 .PHONY: vendor
 vendor:
