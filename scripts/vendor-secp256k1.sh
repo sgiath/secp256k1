@@ -44,12 +44,13 @@ readonly ALLOW_UNVERIFIED
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 readonly ROOT
+readonly SIGNERS_FILE="$ROOT/scripts/secp256k1-release-signers.txt"
 
 log "Starting vendoring for $VERSION"
 log "Checking maintainer tools"
 
 missing_tools=()
-required_tools=(git make autoreconf awk tar sed diff mktemp cp mv rm mkdir wc dirname)
+required_tools=(git make autoreconf awk tar sed diff mktemp cp mv rm mkdir wc dirname paste)
 for tool in "${required_tools[@]}"; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     missing_tools+=("$tool")
@@ -110,23 +111,90 @@ pin_count() {
   awk -v pin="$pin" '$0 ~ "^" pin " := " { count++ } END { print count + 0 }' "$ROOT/Makefile"
 }
 
+# Prints the allowlist as "FINGERPRINT NAME" lines (fingerprint uppercased).
+# Fails when an entry is not a full 40-hex-digit fingerprint or the list is empty.
+load_release_signers() {
+  awk '
+    { sub(/#.*/, "") }
+    NF == 0 { next }
+    {
+      fpr = toupper($1)
+      if (length(fpr) != 40 || fpr !~ /^[0-9A-F]+$/) {
+        printf "%s:%d: not a full OpenPGP fingerprint: %s\n", FILENAME, NR, $1 > "/dev/stderr"
+        bad = 1
+        next
+      }
+      $1 = ""
+      sub(/^[ \t]+/, "")
+      print fpr " " $0
+      count++
+    }
+    END { if (bad || count == 0) exit 1 }
+  ' "$SIGNERS_FILE"
+}
+
+# Prints the primary-key fingerprints of all VALIDSIG lines in gpg status output.
+validsig_primary_fingerprints() {
+  awk '$1 == "[GNUPG:]" && $2 == "VALIDSIG" { print toupper(NF >= 12 ? $12 : $3) }' <<< "$1"
+}
+
+# Prints the allowlisted "FINGERPRINT NAME" entry of the first VALIDSIG whose
+# primary key is in the allowlist; fails when there is none.
+allowed_tag_signer() {
+  local fpr
+
+  while read -r fpr; do
+    if awk -v fpr="$fpr" '$1 == fpr { print; found = 1; exit } END { exit !found }' <<< "$RELEASE_SIGNERS"; then
+      return 0
+    fi
+  done < <(validsig_primary_fingerprints "$1")
+  return 1
+}
+
+tag_unverified() {
+  local reason="$1"
+
+  if (( ALLOW_UNVERIFIED )); then
+    TAG_VERIFICATION="UNVERIFIED (--allow-unverified; $reason)"
+    warn "$reason"
+    warn "continuing ONLY because --allow-unverified was supplied; the vendored release is NOT bound to an allowlisted upstream signing key"
+  else
+    die "$reason; import the release key from ${SIGNERS_FILE#"$ROOT"/} (gpg --keyserver hkps://keys.openpgp.org --recv-keys <fingerprint>) and retry, or explicitly use --allow-unverified"
+  fi
+}
+
+if [[ ! -r "$SIGNERS_FILE" ]]; then
+  die "release signer allowlist not readable: $SIGNERS_FILE"
+fi
+if ! RELEASE_SIGNERS="$(load_release_signers)"; then
+  die "invalid release signer allowlist: $SIGNERS_FILE"
+fi
+readonly RELEASE_SIGNERS
+
 log "Cloning signed upstream tag $VERSION"
 git clone --depth 1 --branch "$VERSION" "$UPSTREAM_URL" "$TMP/src"
 
 TAG_VERIFICATION=""
 if command -v gpg >/dev/null 2>&1; then
-  log "Verifying GPG signature on tag $VERSION"
-  if git -C "$TMP/src" tag -v "$VERSION"; then
-    TAG_VERIFICATION="verified"
-  elif (( ALLOW_UNVERIFIED )); then
-    TAG_VERIFICATION="UNVERIFIED (--allow-unverified; tag verification failed)"
-    warn "Tag verification failed; continuing only because --allow-unverified was supplied"
+  log "Verifying GPG signature on tag $VERSION against ${SIGNERS_FILE#"$ROOT"/}"
+  if TAG_STATUS="$(git -C "$TMP/src" verify-tag --raw "$VERSION" 2>&1)"; then
+    if TAG_SIGNER="$(allowed_tag_signer "$TAG_STATUS")"; then
+      TAG_SIGNER_FPR="${TAG_SIGNER%% *}"
+      TAG_SIGNER_NAME="${TAG_SIGNER#* }"
+      TAG_VERIFICATION="verified (primary key $TAG_SIGNER_FPR, $TAG_SIGNER_NAME)"
+      log "Tag $VERSION has a valid signature from allowlisted key $TAG_SIGNER_FPR ($TAG_SIGNER_NAME)"
+    else
+      printf '%s\n' "$TAG_STATUS" >&2
+      observed="$(validsig_primary_fingerprints "$TAG_STATUS" | paste -sd ' ' -)"
+      tag_unverified "tag $VERSION has a valid signature, but no signing primary key is allowlisted (observed: ${observed:-none})"
+    fi
   else
-    die "tag verification failed; import the upstream release signing key and retry, or explicitly use --allow-unverified"
+    printf '%s\n' "$TAG_STATUS" >&2
+    tag_unverified "tag $VERSION has no good GPG signature"
   fi
 else
   TAG_VERIFICATION="UNVERIFIED (--allow-unverified; gpg unavailable)"
-  warn "gpg is unavailable; continuing only because --allow-unverified was supplied"
+  warn "gpg is unavailable; continuing ONLY because --allow-unverified was supplied"
 fi
 readonly TAG_VERIFICATION
 
@@ -329,3 +397,6 @@ printf '%s SHA256: %s\n' "$LOG_PREFIX" "$SHA256"
 printf '%s TAG VERIFICATION: %s\n' "$LOG_PREFIX" "$TAG_VERIFICATION"
 printf '%s TARBALL: %s (%s bytes)\n' "$LOG_PREFIX" "${installed_archives[0]}" "$archive_size"
 printf '%s Next: update CHANGELOG.md; run mix clean, mix compile, and mix test; commit the tarball and Makefile.\n' "$LOG_PREFIX"
+if (( ALLOW_UNVERIFIED )) && [[ "$TAG_VERIFICATION" == UNVERIFIED* ]]; then
+  warn "tag $VERSION was NOT verified against an allowlisted release key; verify the release by other means before committing"
+fi

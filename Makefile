@@ -14,6 +14,17 @@ LIB_TARBALL := $(SRC_DIR)/secp256k1-$(LIB_VERSION).tar.gz
 LIB_BUILD_DIR := $(LIB_SRC_DIR)/.libs
 LIB_STATIC_LIB := $(LIB_BUILD_DIR)/libsecp256k1.a
 
+# Logs of the upstream configure/make steps (inside the extracted tree).
+LIB_CONFIGURE_LOG := $(LIB_SRC_DIR)/.nif-configure.log
+LIB_MAKE_LOG := $(LIB_SRC_DIR)/.nif-make.log
+
+# Build configuration fingerprints. Each file holds the build variables that
+# affect its consumers and is only rewritten when that content changes, so a
+# changed compiler or flag set rebuilds exactly what it affects while a repeated
+# `make` stays a no-op.
+NIF_BUILD_CONFIG := $(SRC_DIR)/.build-config
+LIB_BUILD_CONFIG := $(SRC_DIR)/.build-config-libsecp256k1
+
 # --- Verbosity Control ---
 # Default to quiet execution. Run `make V=1` for verbose output.
 ifndef V
@@ -25,6 +36,18 @@ else
   QUIET_MAKE =
   ECHO = @\# # Echo command becomes a comment (no-op)
 endif
+
+# $(call logged,LOGFILE,COMMAND)
+# Quiet builds capture COMMAND output in LOGFILE and print it only on failure.
+# Verbose builds (V=1) stream the output directly.
+ifndef V
+  logged = ( $(2) ) > $(1) 2>&1 || { status=$$?; cat $(1) >&2; echo "  FAILED   (log: $(1))" >&2; exit $$status; }
+else
+  logged = $(2)
+endif
+
+# Quote a value for use inside a single-quoted shell string.
+sq = $(subst ','\'',$(1))
 
 # --- Build Flags ---
 # Check for required Erlang include directory
@@ -63,6 +86,25 @@ ifeq ($(CROSSCOMPILE),)
   endif
 endif
 
+# --- Opt-in developer/CI flags (first-party NIF code only) ---
+# SECP256K1_NIF_WERROR=1   turn warnings into errors when compiling c_src/*.c.
+#                          Never applied to the upstream configure/make.
+# SECP256K1_NIF_SANITIZE=1 compile and link the NIF with ASan + UBSan. The BEAM
+#                          is not instrumented, so the ASan runtime must be
+#                          preloaded, e.g. LD_PRELOAD=$(gcc -print-file-name=libasan.so).
+NIF_WERROR_FLAGS :=
+ifeq ($(SECP256K1_NIF_WERROR),1)
+  NIF_WERROR_FLAGS := -Werror
+endif
+
+NIF_SANITIZE_FLAGS :=
+ifeq ($(SECP256K1_NIF_SANITIZE),1)
+  NIF_SANITIZE_FLAGS := -fsanitize=address,undefined -fno-omit-frame-pointer -g
+endif
+
+NIF_CFLAGS = $(CFLAGS) $(NIF_WERROR_FLAGS) $(NIF_SANITIZE_FLAGS)
+NIF_LDFLAGS = $(CFLAGS) $(NIF_SANITIZE_FLAGS)
+
 # --- secp256k1 Library Options ---
 CONFIG_OPTS = --disable-benchmark --disable-tests --disable-fast-install --with-pic --enable-experimental --enable-module-musig
 
@@ -74,32 +116,69 @@ ifneq ($(CROSSCOMPILE),)
   CONFIG_OPTS += --host=$(notdir $(CROSSCOMPILE))
 endif
 
+# --- Fingerprint Contents ---
+# Upstream configure reads CC/CFLAGS/CPPFLAGS/LDFLAGS from the environment when
+# they are exported, so they are part of its fingerprint alongside the options.
+LIB_BUILD_CONFIG_LINES = \
+	'CC=$(call sq,$(CC))' \
+	'CFLAGS=$(call sq,$(CFLAGS))' \
+	'CPPFLAGS=$(call sq,$(CPPFLAGS))' \
+	'LDFLAGS=$(call sq,$(LDFLAGS))' \
+	'CONFIG_OPTS=$(call sq,$(CONFIG_OPTS))' \
+	'CROSSCOMPILE=$(call sq,$(CROSSCOMPILE))'
+
+NIF_BUILD_CONFIG_LINES = \
+	$(LIB_BUILD_CONFIG_LINES) \
+	'LIBS=$(call sq,$(LIBS))' \
+	'SECP256K1_NIF_WERROR=$(call sq,$(NIF_WERROR_FLAGS))' \
+	'SECP256K1_NIF_SANITIZE=$(call sq,$(NIF_SANITIZE_FLAGS))'
+
+# $(call write_if_changed,FILE,LINES)
+# The temporary name is per-process because Mix may run make concurrently for
+# different environments (e.g. `mix check` runs credo and ex_unit in parallel).
+write_if_changed = tmp="$(1).tmp.$$$$"; \
+	printf '%s\n' $(2) > "$$tmp" && \
+	if cmp -s "$$tmp" "$(1)"; then rm -f "$$tmp"; else mv -f "$$tmp" "$(1)"; fi
+
 # --- Source Files & Targets ---
 NIF_SOURCES = $(wildcard $(SRC_DIR)/*.c)
 NIF_OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(SRC_DIR)/%.o,$(NIF_SOURCES))
 NIF_TARGET = $(TARGET_DIR)/secp256k1_nif.so
 
-# Utility headers (used as dependencies to trigger rebuilds)
-UTILS = $(SRC_DIR)/random.h $(SRC_DIR)/utils.h $(SRC_DIR)/nifs.h
+# Every first-party header is a dependency of every first-party object.
+NIF_HEADERS = $(wildcard $(SRC_DIR)/*.h)
 
 # Version- and checksum-specific stamp indicating verified source extraction
 EXTRACT_STAMP = $(LIB_SRC_DIR)/.extracted-$(LIB_VERSION)-$(LIB_SHA256)
+
+# Remove a target whose recipe failed so a partial output is never reused.
+.DELETE_ON_ERROR:
 
 # --- Default Target ---
 .PHONY: all
 all: $(NIF_TARGET)
 
+# --- Build Configuration Fingerprints ---
+.PHONY: FORCE
+FORCE:
+
+$(NIF_BUILD_CONFIG): FORCE
+	@$(call write_if_changed,$@,$(NIF_BUILD_CONFIG_LINES))
+
+$(LIB_BUILD_CONFIG): FORCE
+	@$(call write_if_changed,$@,$(LIB_BUILD_CONFIG_LINES))
+
 # --- NIF Compilation and Link Rules ---
 # $@ = target file ($(SRC_DIR)/%.o)
 # $< = first prerequisite ($(SRC_DIR)/%.c)
-$(SRC_DIR)/%.o: $(SRC_DIR)/%.c $(UTILS) $(EXTRACT_STAMP)
+$(SRC_DIR)/%.o: $(SRC_DIR)/%.c $(NIF_HEADERS) $(EXTRACT_STAMP) $(NIF_BUILD_CONFIG)
 	$(ECHO) "  CC       $@"
-	@$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+	@$(CC) $(CPPFLAGS) $(NIF_CFLAGS) -c -o $@ $<
 
-$(NIF_TARGET): $(NIF_OBJECTS) $(LIB_STATIC_LIB)
+$(NIF_TARGET): $(NIF_OBJECTS) $(LIB_STATIC_LIB) $(NIF_BUILD_CONFIG)
 	@mkdir -p $(@D)
 	$(ECHO) "  LD       $@"
-	@$(CC) $(CFLAGS) -shared -o $@ $(NIF_OBJECTS) $(LIB_STATIC_LIB) $(LDFLAGS) $(LIBS)
+	@$(CC) $(NIF_LDFLAGS) -shared -o $@ $(NIF_OBJECTS) $(LIB_STATIC_LIB) $(LDFLAGS) $(LIBS)
 	@rm -f $(TARGET_DIR)/ecdsa.so $(TARGET_DIR)/schnorrsig.so $(TARGET_DIR)/ecdh.so $(TARGET_DIR)/extrakeys.so $(TARGET_DIR)/musig.so
 
 # --- secp256k1 Library Compilation Chain ---
@@ -107,12 +186,15 @@ $(NIF_TARGET): $(NIF_OBJECTS) $(LIB_STATIC_LIB)
 # The static library depends on the Makefile existing *and* being configured
 $(LIB_STATIC_LIB): $(LIB_SRC_DIR)/Makefile
 	$(ECHO) "  MAKE     libsecp256k1"
-	@$(MAKE) -C $(LIB_SRC_DIR) $(QUIET_MAKE) $(QUIET_CMD)
+	@$(call logged,$(LIB_MAKE_LOG),$(MAKE) -C $(LIB_SRC_DIR) $(QUIET_MAKE))
 
-# The Makefile is created by configure after verified source extraction
-$(LIB_SRC_DIR)/Makefile: $(EXTRACT_STAMP)
+# The Makefile is created by configure after verified source extraction and is
+# regenerated (from a clean upstream tree) whenever the configure fingerprint
+# changes.
+$(LIB_SRC_DIR)/Makefile: $(EXTRACT_STAMP) $(LIB_BUILD_CONFIG)
 	$(ECHO) "  CONFIG   libsecp256k1"
-	@cd $(LIB_SRC_DIR) && ./configure $(CONFIG_OPTS) $(QUIET_CMD)
+	@if [ -f "$@" ]; then $(MAKE) -C $(LIB_SRC_DIR) distclean $(QUIET_MAKE) $(QUIET_CMD) || rm -f "$@"; fi
+	@$(call logged,$(LIB_CONFIGURE_LOG),cd $(LIB_SRC_DIR) && ./configure $(CONFIG_OPTS))
 
 # Verification happens at extraction time, not on every no-op compile.
 $(EXTRACT_STAMP): $(LIB_TARBALL)
@@ -153,11 +235,12 @@ vendor:
 # --- Cleaning Targets ---
 .PHONY: clean distclean
 
-# clean: Remove built NIFs and clean the library build artifacts
+# clean: Remove built NIFs, build fingerprints, and the library build artifacts
 clean:
 	$(ECHO) "  CLEAN    build artifacts"
 	@rm -f $(TARGET_DIR)/*.so
 	@rm -f $(SRC_DIR)/*.o
+	@rm -f $(NIF_BUILD_CONFIG) $(NIF_BUILD_CONFIG).tmp.* $(LIB_BUILD_CONFIG) $(LIB_BUILD_CONFIG).tmp.*
 	@if [ -f "$(LIB_SRC_DIR)/Makefile" ]; then \
 		$(MAKE) -C $(LIB_SRC_DIR) clean $(QUIET_MAKE) $(QUIET_CMD); \
 	fi

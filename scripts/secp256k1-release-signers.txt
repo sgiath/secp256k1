@@ -1,0 +1,19 @@
+# OpenPGP primary-key fingerprints allowed to sign bitcoin-core/secp256k1
+# release tags. scripts/vendor-secp256k1.sh accepts a tag only when
+# `git verify-tag --raw` reports a VALIDSIG whose primary-key fingerprint is
+# listed here (release tags are usually signed by a subkey of these keys).
+#
+# Source: upstream SECURITY.md key table
+#   https://github.com/bitcoin-core/secp256k1/blob/d5c64bafc7f1d9bc0cfd857840d3014ffaedb7a3/SECURITY.md
+#   (last commit touching SECURITY.md as of master 186eec1c1b93d71d2131cd228ca16b4b97738f60,
+#   retrieved 2026-10-02)
+#
+# Format: one full 40-hex-digit fingerprint per line, optionally followed by the
+# key holder's name. `#` starts a comment.
+#
+# Import keys with:
+#   gpg --keyserver hkps://keys.openpgp.org --recv-keys <fingerprint>
+
+133EAC179436F14A5CF1B794860FEB804E669320 Pieter Wuille
+09E03F871092E40E106E902B33BC86AB80FF5516 Tim Ruffing
+6A8F9C266528E25AEB1D7731C2371D91CB716EA7 Sebastian Falbesoner
