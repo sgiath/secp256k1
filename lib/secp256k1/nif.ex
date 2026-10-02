@@ -69,6 +69,17 @@ defmodule Secp256k1.NIF do
 
   def musig_partial_sig_agg(_session, _partial_sigs), do: :erlang.nif_error({:error, :not_loaded})
 
+  # Fault-injection harness, registered only by a NIF built with
+  # -DSECP256K1_NIF_FAULT_INJECTION (see c_src/fault.h).
+  @doc false
+  def fault_call(_fail_at, _name, _args), do: :erlang.nif_error({:error, :not_loaded})
+
+  @doc false
+  def fault_call_with_callback(_kind, _name, _args), do: :erlang.nif_error({:error, :not_loaded})
+
+  @doc false
+  def fault_live_resources, do: :erlang.nif_error({:error, :not_loaded})
+
   @on_load :load_nifs
 
   defp load_nifs do

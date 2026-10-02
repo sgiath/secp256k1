@@ -9,6 +9,7 @@ destruct_keyagg_cache(ErlNifEnv *env, void *obj)
 {
   (void)env;
   secure_erase(obj, sizeof(keyagg_cache_wrapper));
+  FAULT_RESOURCE_LIVE(FAULT_RESOURCE_KEYAGG_CACHE, -1);
 }
 
 static void
@@ -16,6 +17,7 @@ destruct_session(ErlNifEnv *env, void *obj)
 {
   (void)env;
   secure_erase(obj, sizeof(session_wrapper));
+  FAULT_RESOURCE_LIVE(FAULT_RESOURCE_SESSION, -1);
 }
 
 static void
@@ -31,6 +33,7 @@ destruct_secnonce(ErlNifEnv *env, void *obj)
   }
 
   secure_erase(obj, sizeof(secnonce_wrapper));
+  FAULT_RESOURCE_LIVE(FAULT_RESOURCE_SECNONCE, -1);
 }
 
 static ErlNifResourceType *
@@ -72,6 +75,7 @@ make_keyagg_cache_resource(
   if (!wrapper) {
     return 0;
   }
+  FAULT_RESOURCE_LIVE(FAULT_RESOURCE_KEYAGG_CACHE, 1);
 
   memcpy(&wrapper->cache, cache, sizeof(wrapper->cache));
   *term = enif_make_resource(env, wrapper);
@@ -94,6 +98,7 @@ make_session_resource(
   if (!wrapper) {
     return 0;
   }
+  FAULT_RESOURCE_LIVE(FAULT_RESOURCE_SESSION, 1);
 
   memcpy(&wrapper->session, session, sizeof(wrapper->session));
   memcpy(&wrapper->cache, cache, sizeof(wrapper->cache));
@@ -119,6 +124,7 @@ make_secnonce_resource(
   if (!wrapper) {
     return 0;
   }
+  FAULT_RESOURCE_LIVE(FAULT_RESOURCE_SECNONCE, 1);
 
   wrapper->used = 0;
   wrapper->mutex = enif_mutex_create("secp256k1_musig_secnonce");

@@ -58,6 +58,18 @@ callback_internal_fired(void)
   return internal_fired;
 }
 
+#ifdef SECP256K1_NIF_FAULT_INJECTION
+void
+callback_fire(int internal)
+{
+  if (internal) {
+    internal_fired = 1;
+  } else {
+    illegal_fired = 1;
+  }
+}
+#endif
+
 void
 secure_erase(void *ptr, size_t len)
 {
@@ -171,4 +183,28 @@ error_result(ErlNifEnv *env, const char *error_msg)
   }
 
   return enif_make_tuple2(env, enif_make_atom(env, "error"), reason);
+}
+
+int
+get_seckey(ErlNifEnv *env, ERL_NIF_TERM term, ErlNifBinary *seckey)
+{
+  return enif_inspect_binary(env, term, seckey) && seckey->size == SECKEY_SIZE &&
+         secp256k1_ec_seckey_verify(nif_ctx(env), seckey->data);
+}
+
+int
+get_keypair(ErlNifEnv *env, ERL_NIF_TERM term, secp256k1_keypair *keypair, ERL_NIF_TERM *result)
+{
+  ErlNifBinary seckey;
+
+  if (!get_seckey(env, term, &seckey)) {
+    *result = enif_make_badarg(env);
+    return 0;
+  }
+  if (!secp256k1_keypair_create(nif_ctx(env), keypair, seckey.data)) {
+    secure_erase(keypair, sizeof(*keypair));
+    *result = error_result(env, "secp256k1_keypair_create failed");
+    return 0;
+  }
+  return 1;
 }

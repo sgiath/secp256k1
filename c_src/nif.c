@@ -1,6 +1,11 @@
 #include "utils.h"
 #include "nifs.h"
 
+#ifdef SECP256K1_NIF_FAULT_INJECTION
+#include <stdlib.h>
+#include <string.h>
+#endif
+
 /*
  * Applies the libsecp256k1 callback contract after a NIF body ran: an
  * illegal-argument callback raises badarg, an internal-error callback returns
@@ -22,91 +27,23 @@ guard_result(ErlNifEnv *env, ERL_NIF_TERM result)
   return error_result(env, "libsecp256k1 internal error");
 }
 
-#define GUARDED_NIF(name)                                                                 \
-  static ERL_NIF_TERM guarded_##name(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) \
-  {                                                                                       \
-    ERL_NIF_TERM result;                                                                  \
-    callback_flags_clear();                                                               \
-    result = secp256k1_nif_##name(env, argc, argv);                                       \
-    return guard_result(env, result);                                                     \
+#define SECP256K1_NIF_GUARDED(erl_name, fn, arity, flags)                               \
+  static ERL_NIF_TERM guarded_##fn(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) \
+  {                                                                                     \
+    ERL_NIF_TERM result;                                                                \
+    callback_flags_clear();                                                             \
+    result = secp256k1_nif_##fn(env, argc, argv);                                       \
+    return guard_result(env, result);                                                   \
   }
 
-GUARDED_NIF(ecdsa_compressed_pubkey)
-GUARDED_NIF(ecdsa_uncompressed_pubkey)
-GUARDED_NIF(ecdsa_compress_pubkey)
-GUARDED_NIF(ecdsa_decompress_pubkey)
-GUARDED_NIF(ecdsa_sign)
-GUARDED_NIF(ecdsa_serialize_der)
-GUARDED_NIF(ecdsa_parse_der)
-GUARDED_NIF(ecdsa_normalize)
-GUARDED_NIF(ecdsa_valid)
-GUARDED_NIF(schnorr_sign32)
-GUARDED_NIF(schnorr_sign_custom)
-GUARDED_NIF(schnorr_valid)
-GUARDED_NIF(ecdh)
-GUARDED_NIF(valid_seckey)
-GUARDED_NIF(valid_pubkey)
-GUARDED_NIF(xonly_pubkey)
-GUARDED_NIF(xonly_pubkey_from_pubkey)
-GUARDED_NIF(ec_seckey_tweak_add)
-GUARDED_NIF(ec_pubkey_tweak_add)
-GUARDED_NIF(xonly_seckey_tweak_add)
-GUARDED_NIF(xonly_pubkey_tweak_add)
-GUARDED_NIF(xonly_pubkey_tweak_add_check)
-GUARDED_NIF(musig_pubkey_agg)
-GUARDED_NIF(musig_pubkey_get)
-GUARDED_NIF(musig_pubkey_ec_tweak_add)
-GUARDED_NIF(musig_pubkey_xonly_tweak_add)
-GUARDED_NIF(musig_nonce_gen)
-GUARDED_NIF(musig_nonce_agg)
-GUARDED_NIF(musig_nonce_process)
-GUARDED_NIF(musig_partial_sign)
-GUARDED_NIF(musig_partial_sig_verify)
-GUARDED_NIF(musig_partial_sig_agg)
+SECP256K1_NIF_LIST(SECP256K1_NIF_GUARDED, SECP256K1_NIF_SKIP)
 
-static ErlNifFunc nif_funcs[] = {
-  {"ecdsa_compressed_pubkey", 1, guarded_ecdsa_compressed_pubkey, 0},
-  {"ecdsa_uncompressed_pubkey", 1, guarded_ecdsa_uncompressed_pubkey, 0},
-  {"ecdsa_compress_pubkey", 1, guarded_ecdsa_compress_pubkey, 0},
-  {"ecdsa_decompress_pubkey", 1, guarded_ecdsa_decompress_pubkey, 0},
-  {"ecdsa_sign", 3, guarded_ecdsa_sign, 0},
-  {"ecdsa_serialize_der", 1, guarded_ecdsa_serialize_der, 0},
-  {"ecdsa_parse_der", 1, guarded_ecdsa_parse_der, 0},
-  {"ecdsa_normalize", 1, guarded_ecdsa_normalize, 0},
-  {"ecdsa_valid?", 3, guarded_ecdsa_valid, 0},
-  {"schnorr_sign32", 3, guarded_schnorr_sign32, 0},
-  {"schnorr_sign_custom", 3, guarded_schnorr_sign_custom, 0},
-  {"schnorr_sign_custom_dirty", 3, guarded_schnorr_sign_custom, ERL_NIF_DIRTY_JOB_CPU_BOUND},
-  {"schnorr_valid?", 3, guarded_schnorr_valid, 0},
-  {"schnorr_valid_dirty?", 3, guarded_schnorr_valid, ERL_NIF_DIRTY_JOB_CPU_BOUND},
-  {"ecdh", 2, guarded_ecdh, 0},
-  {"valid_seckey?", 1, guarded_valid_seckey, 0},
-  {"valid_pubkey?", 1, guarded_valid_pubkey, 0},
-  {"xonly_pubkey", 1, guarded_xonly_pubkey, 0},
-  {"xonly_pubkey_from_pubkey", 1, guarded_xonly_pubkey_from_pubkey, 0},
-  {"ec_seckey_tweak_add", 2, guarded_ec_seckey_tweak_add, 0},
-  {"ec_pubkey_tweak_add", 2, guarded_ec_pubkey_tweak_add, 0},
-  {"xonly_seckey_tweak_add", 2, guarded_xonly_seckey_tweak_add, 0},
-  {"xonly_pubkey_tweak_add", 2, guarded_xonly_pubkey_tweak_add, 0},
-  {"xonly_pubkey_tweak_add_check", 4, guarded_xonly_pubkey_tweak_add_check, 0},
-  {"musig_pubkey_agg", 1, guarded_musig_pubkey_agg, ERL_NIF_DIRTY_JOB_CPU_BOUND},
-  {"musig_pubkey_get", 1, guarded_musig_pubkey_get, 0},
-  {"musig_pubkey_ec_tweak_add", 2, guarded_musig_pubkey_ec_tweak_add, 0},
-  {"musig_pubkey_xonly_tweak_add", 2, guarded_musig_pubkey_xonly_tweak_add, 0},
-  {"musig_nonce_gen", 5, guarded_musig_nonce_gen, 0},
-  {"musig_nonce_agg", 1, guarded_musig_nonce_agg, ERL_NIF_DIRTY_JOB_CPU_BOUND},
-  {"musig_nonce_process", 3, guarded_musig_nonce_process, 0},
-  {"musig_partial_sign", 4, guarded_musig_partial_sign, 0},
-  {"musig_partial_sig_verify", 5, guarded_musig_partial_sig_verify, 0},
-  {"musig_partial_sig_agg", 2, guarded_musig_partial_sig_agg, ERL_NIF_DIRTY_JOB_CPU_BOUND}
-};
+#define SECP256K1_NIF_ENTRY(erl_name, fn, arity, flags) {erl_name, arity, guarded_##fn, flags},
 
 static int
-load(ErlNifEnv *env, void **priv_data, ERL_NIF_TERM load_info)
+load_state(ErlNifEnv *env, void **priv_data)
 {
   secp256k1_nif_state *state;
-
-  (void)load_info;
 
   callback_flags_clear();
   state = secp256k1_nif_state_create();
@@ -122,6 +59,189 @@ load(ErlNifEnv *env, void **priv_data, ERL_NIF_TERM load_info)
 
   *priv_data = state;
   return 0;
+}
+
+#ifdef SECP256K1_NIF_FAULT_INJECTION
+
+/* Test-only NIFs driving the fault-injection harness (fault.h). */
+
+#define FAULT_MAX_ARITY 5
+
+typedef struct {
+  const char *name;
+  int arity;
+  ERL_NIF_TERM (*body)(ErlNifEnv *, int, const ERL_NIF_TERM[]);
+  ERL_NIF_TERM (*guarded)(ErlNifEnv *, int, const ERL_NIF_TERM[]);
+} fault_target;
+
+#define FAULT_TARGET(erl_name, fn, arity, flags) \
+  {erl_name, arity, secp256k1_nif_##fn, guarded_##fn},
+
+static const fault_target fault_targets[] = {SECP256K1_NIF_LIST(FAULT_TARGET, FAULT_TARGET)};
+
+/*
+ * Finds the registered NIF named by the atom `name` whose arity is the length
+ * of the list `args`, and copies the list into `argv`.
+ */
+static const fault_target *
+fault_lookup(ErlNifEnv *env, ERL_NIF_TERM name, ERL_NIF_TERM args, ERL_NIF_TERM argv[])
+{
+  char name_buf[64];
+  unsigned int argc;
+  unsigned int i;
+
+  if (!enif_get_atom(env, name, name_buf, sizeof(name_buf), ERL_NIF_LATIN1) ||
+      !enif_get_list_length(env, args, &argc) || argc > FAULT_MAX_ARITY) {
+    return NULL;
+  }
+  for (i = 0; i < argc; i++) {
+    enif_get_list_cell(env, args, &argv[i], &args);
+  }
+  for (i = 0; i < sizeof(fault_targets) / sizeof(fault_targets[0]); i++) {
+    if (fault_targets[i].arity == (int)argc && strcmp(fault_targets[i].name, name_buf) == 0) {
+      return &fault_targets[i];
+    }
+  }
+  return NULL;
+}
+
+/*
+ * fault_call(fail_at, name, args) calls the guarded NIF `name` with the
+ * fail_at-th fault point failing (0: none) and returns its result or raises
+ * its exception. It first sends {secp256k1_fault, hits, net_allocs, failed}
+ * to the caller, where `failed` names the failed fault point or is nil.
+ */
+static ERL_NIF_TERM
+fault_call(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+{
+  ERL_NIF_TERM args[FAULT_MAX_ARITY];
+  const fault_target *target;
+  unsigned long fail_at;
+  ERL_NIF_TERM result;
+  ERL_NIF_TERM stats_term;
+  fault_stats stats;
+  ErlNifPid self;
+
+  (void)argc;
+
+  target = fault_lookup(env, argv[1], argv[2], args);
+  if (!enif_get_ulong(env, argv[0], &fail_at) || !target) {
+    return enif_make_badarg(env);
+  }
+
+  fault_arm(fail_at);
+  result = target->guarded(env, target->arity, args);
+  stats = fault_disarm();
+
+  stats_term = enif_make_tuple4(
+    env,
+    enif_make_atom(env, "secp256k1_fault"),
+    enif_make_ulong(env, stats.hits),
+    enif_make_long(env, stats.net_allocs),
+    enif_make_atom(env, stats.failed ? stats.failed : "nil")
+  );
+  enif_send(env, enif_self(env, &self), NULL, stats_term);
+  return result;
+}
+
+/*
+ * fault_call_with_callback(kind, name, args) runs the raw NIF body, then
+ * fires the :illegal or :internal libsecp256k1 callback flag, then applies the
+ * callback guard to the body's result.
+ */
+static ERL_NIF_TERM
+fault_call_with_callback(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+{
+  ERL_NIF_TERM args[FAULT_MAX_ARITY];
+  const fault_target *target;
+  int internal = enif_is_identical(argv[0], enif_make_atom(env, "internal"));
+  ERL_NIF_TERM result;
+
+  (void)argc;
+
+  target = fault_lookup(env, argv[1], argv[2], args);
+  if (!target || (!internal && !enif_is_identical(argv[0], enif_make_atom(env, "illegal")))) {
+    return enif_make_badarg(env);
+  }
+
+  callback_flags_clear();
+  result = target->body(env, target->arity, args);
+  callback_fire(internal);
+  return guard_result(env, result);
+}
+
+/* fault_live_resources() returns the live MuSig resources of each type. */
+static ERL_NIF_TERM
+fault_live_resources(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+{
+  ERL_NIF_TERM keys[FAULT_RESOURCE_KINDS];
+  ERL_NIF_TERM values[FAULT_RESOURCE_KINDS];
+  ERL_NIF_TERM map;
+  int kind;
+
+  (void)argc;
+  (void)argv;
+
+  keys[FAULT_RESOURCE_KEYAGG_CACHE] = enif_make_atom(env, "keyagg_cache");
+  keys[FAULT_RESOURCE_SESSION] = enif_make_atom(env, "session");
+  keys[FAULT_RESOURCE_SECNONCE] = enif_make_atom(env, "secnonce");
+  for (kind = 0; kind < FAULT_RESOURCE_KINDS; kind++) {
+    values[kind] = enif_make_long(env, fault_resource_count((fault_resource_kind)kind));
+  }
+  enif_make_map_from_arrays(env, keys, values, FAULT_RESOURCE_KINDS, &map);
+  return map;
+}
+
+/*
+ * Loads with the fault point SECP256K1_NIF_FAULT_LOAD names (a decimal
+ * count, unset: none) failing. A failed load that leaves first-party
+ * allocations behind aborts, so a test can detect the leak in a child BEAM.
+ */
+static int
+fault_load_state(ErlNifEnv *env, void **priv_data)
+{
+  char value[32];
+  size_t size = sizeof(value);
+  unsigned long fail_at = 0;
+  fault_stats stats;
+  int status;
+
+  if (enif_getenv("SECP256K1_NIF_FAULT_LOAD", value, &size) == 0) {
+    fail_at = strtoul(value, NULL, 10);
+  }
+
+  fault_arm(fail_at);
+  status = load_state(env, priv_data);
+  stats = fault_disarm();
+
+  if (status != 0 && stats.net_allocs != 0) {
+    abort();
+  }
+  return status;
+}
+
+#define FAULT_NIF_ENTRIES                                                                         \
+  {"fault_call", 3, fault_call, 0}, {"fault_call_with_callback", 3, fault_call_with_callback, 0}, \
+    {"fault_live_resources", 0, fault_live_resources, 0},
+
+#else
+
+#define FAULT_NIF_ENTRIES
+
+#endif
+
+static ErlNifFunc nif_funcs[] = {SECP256K1_NIF_LIST(SECP256K1_NIF_ENTRY, SECP256K1_NIF_ENTRY)
+                                   FAULT_NIF_ENTRIES};
+
+static int
+load(ErlNifEnv *env, void **priv_data, ERL_NIF_TERM load_info)
+{
+  (void)load_info;
+#ifdef SECP256K1_NIF_FAULT_INJECTION
+  return fault_load_state(env, priv_data);
+#else
+  return load_state(env, priv_data);
+#endif
 }
 
 static int

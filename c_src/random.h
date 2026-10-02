@@ -55,4 +55,10 @@ fill_random(unsigned char *data, size_t size)
   return 0;
 }
 
+#ifdef SECP256K1_NIF_FAULT_INJECTION
+#include "fault.h"
+/* A fault point; the inner fill_random is not expanded again. */
+#define fill_random(data, size) (fault_point("fill_random") ? 0 : fill_random(data, size))
+#endif
+
 #endif /* SECP256K1_NIF_RANDOM_H */

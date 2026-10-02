@@ -48,16 +48,56 @@ partial_sig_result(ErlNifEnv *env, const secp256k1_musig_partial_sig *partial_si
   return result;
 }
 
+/*
+ * Checks the transcript of a nonce this call has claimed and signs with it,
+ * which overwrites the nonce. Returns the partial signature binary or the
+ * error result; the caller erases the nonce either way.
+ */
+static ERL_NIF_TERM
+sign_with_claimed_nonce(
+  ErlNifEnv *env,
+  secnonce_wrapper *wrapper,
+  const secp256k1_keypair *keypair,
+  const keyagg_cache_wrapper *cache,
+  const session_wrapper *session
+)
+{
+  secp256k1_context *ctx = nif_ctx(env);
+  secp256k1_musig_partial_sig partial_sig;
+
+  if (!keyagg_cache_equal(&cache->cache, &session->cache)) {
+    return error_result(env, "keyagg cache does not match session");
+  }
+  if (wrapper->has_cache && !keyagg_cache_equal(&wrapper->cache, &cache->cache)) {
+    return error_result(env, "secnonce was generated for a different keyagg cache");
+  }
+  if (wrapper->has_msg && memcmp(wrapper->msg, session->msg, sizeof(wrapper->msg)) != 0) {
+    return error_result(env, "secnonce was generated for a different message");
+  }
+  if (!keypair_matches_secnonce(ctx, keypair, wrapper)) {
+    return error_result(env, "secret key does not match secnonce public key");
+  }
+  if (!secp256k1_musig_partial_sign(
+        ctx,
+        &partial_sig,
+        &wrapper->nonce,
+        keypair,
+        &cache->cache,
+        &session->session
+      )) {
+    return error_result(env, "secp256k1_musig_partial_sign failed");
+  }
+  return partial_sig_result(env, &partial_sig);
+}
+
 ERL_NIF_TERM
 secp256k1_nif_musig_partial_sign(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-  secp256k1_context *ctx = nif_ctx(env);
   secnonce_wrapper *wrapper;
   keyagg_cache_wrapper *cache;
   session_wrapper *session;
   ErlNifBinary bin_seckey;
   secp256k1_keypair keypair;
-  secp256k1_musig_partial_sig partial_sig;
   ERL_NIF_TERM result;
   int claimed = 0;
 
@@ -69,7 +109,7 @@ secp256k1_nif_musig_partial_sign(ErlNifEnv *env, int argc, const ERL_NIF_TERM ar
     return enif_make_badarg(env);
   }
 
-  if (!secp256k1_keypair_create(ctx, &keypair, bin_seckey.data)) {
+  if (!secp256k1_keypair_create(nif_ctx(env), &keypair, bin_seckey.data)) {
     result = enif_make_badarg(env);
     goto cleanup;
   }
@@ -81,26 +121,7 @@ secp256k1_nif_musig_partial_sign(ErlNifEnv *env, int argc, const ERL_NIF_TERM ar
   }
 
   /* From here on this call owns the nonce bytes and must erase them. */
-  if (!keyagg_cache_equal(&cache->cache, &session->cache)) {
-    result = error_result(env, "keyagg cache does not match session");
-  } else if (wrapper->has_cache && !keyagg_cache_equal(&wrapper->cache, &cache->cache)) {
-    result = error_result(env, "secnonce was generated for a different keyagg cache");
-  } else if (wrapper->has_msg && memcmp(wrapper->msg, session->msg, sizeof(wrapper->msg)) != 0) {
-    result = error_result(env, "secnonce was generated for a different message");
-  } else if (!keypair_matches_secnonce(ctx, &keypair, wrapper)) {
-    result = error_result(env, "secret key does not match secnonce public key");
-  } else if (!secp256k1_musig_partial_sign(
-               ctx,
-               &partial_sig,
-               &wrapper->nonce,
-               &keypair,
-               &cache->cache,
-               &session->session
-             )) {
-    result = error_result(env, "secp256k1_musig_partial_sign failed");
-  } else {
-    result = partial_sig_result(env, &partial_sig);
-  }
+  result = sign_with_claimed_nonce(env, wrapper, &keypair, cache, session);
 
 cleanup:
   secure_erase(&keypair, sizeof(keypair));

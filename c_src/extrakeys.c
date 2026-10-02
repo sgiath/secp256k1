@@ -60,29 +60,15 @@ ERL_NIF_TERM
 secp256k1_nif_xonly_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
   secp256k1_context *ctx = nif_ctx(env);
-  (void)argc;
-
   ERL_NIF_TERM result;
-  ErlNifBinary seckey;
-
   secp256k1_xonly_pubkey pubkey;
-  secp256k1_keypair keypair = {0};
-
+  secp256k1_keypair keypair;
   unsigned char serialized_pubkey[XONLY_PUBKEY_SIZE];
 
-  // load arguments
-  if (!enif_inspect_binary(env, argv[0], &seckey)) {
-    return enif_make_badarg(env);
-  }
+  (void)argc;
 
-  // check arguments size
-  if (!(seckey.size == SECKEY_SIZE && secp256k1_ec_seckey_verify(ctx, seckey.data))) {
-    return enif_make_badarg(env);
-  }
-
-  if (!secp256k1_keypair_create(ctx, &keypair, seckey.data)) {
-    result = error_result(env, "secp256k1_keypair_create failed");
-    goto cleanup;
+  if (!get_keypair(env, argv[0], &keypair, &result)) {
+    return result;
   }
 
   if (!secp256k1_keypair_xonly_pub(ctx, &pubkey, NULL, &keypair)) {
@@ -143,15 +129,14 @@ ERL_NIF_TERM
 secp256k1_nif_ec_seckey_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
   secp256k1_context *ctx = nif_ctx(env);
-  (void)argc;
-
   ERL_NIF_TERM result;
   ErlNifBinary seckey, tweak;
   unsigned char tweaked_seckey[SECKEY_SIZE];
 
-  if (!enif_inspect_binary(env, argv[0], &seckey) || !enif_inspect_binary(env, argv[1], &tweak) ||
-      seckey.size != SECKEY_SIZE || tweak.size != TWEAK_SIZE ||
-      !secp256k1_ec_seckey_verify(ctx, seckey.data)) {
+  (void)argc;
+
+  if (!get_seckey(env, argv[0], &seckey) || !enif_inspect_binary(env, argv[1], &tweak) ||
+      tweak.size != TWEAK_SIZE) {
     return enif_make_badarg(env);
   }
 
@@ -220,22 +205,19 @@ ERL_NIF_TERM
 secp256k1_nif_xonly_seckey_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
   secp256k1_context *ctx = nif_ctx(env);
-  (void)argc;
-
   ERL_NIF_TERM result;
-  ErlNifBinary seckey, tweak;
-  secp256k1_keypair keypair = {0};
+  ErlNifBinary tweak;
+  secp256k1_keypair keypair;
   unsigned char tweaked_seckey[SECKEY_SIZE] = {0};
 
-  if (!enif_inspect_binary(env, argv[0], &seckey) || !enif_inspect_binary(env, argv[1], &tweak) ||
-      seckey.size != SECKEY_SIZE || tweak.size != TWEAK_SIZE ||
-      !secp256k1_ec_seckey_verify(ctx, seckey.data)) {
+  (void)argc;
+
+  if (!enif_inspect_binary(env, argv[1], &tweak) || tweak.size != TWEAK_SIZE) {
     return enif_make_badarg(env);
   }
 
-  if (!secp256k1_keypair_create(ctx, &keypair, seckey.data)) {
-    result = error_result(env, "secp256k1_keypair_create failed");
-    goto cleanup;
+  if (!get_keypair(env, argv[0], &keypair, &result)) {
+    return result;
   }
 
   if (!secp256k1_keypair_xonly_tweak_add(ctx, &keypair, tweak.data)) {

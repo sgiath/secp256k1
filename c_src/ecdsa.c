@@ -13,11 +13,7 @@ ecdsa_seckey_pubkey(ErlNifEnv *env, const ERL_NIF_TERM argv[], unsigned int seri
   size_t len = sizeof(serialized_pubkey);
   ERL_NIF_TERM result;
 
-  if (!enif_inspect_binary(env, argv[0], &seckey)) {
-    return enif_make_badarg(env);
-  }
-
-  if (!(seckey.size == SECKEY_SIZE && secp256k1_ec_seckey_verify(ctx, seckey.data))) {
+  if (!get_seckey(env, argv[0], &seckey)) {
     return enif_make_badarg(env);
   }
 
@@ -104,19 +100,16 @@ ERL_NIF_TERM
 secp256k1_nif_ecdsa_sign(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
   secp256k1_context *ctx = nif_ctx(env);
-  (void)argc;
-
   ERL_NIF_TERM result;
   ErlNifBinary msg_hash, seckey, nonce_data;
   const unsigned char *ndata = NULL;
-
   secp256k1_ecdsa_signature sig;
-
   unsigned char serialized_signature[ECDSA_COMPACT_SIG_SIZE];
 
-  /* load arguments given by Elixir */
-  if (!enif_inspect_binary(env, argv[0], &msg_hash) ||
-      !enif_inspect_binary(env, argv[1], &seckey)) {
+  (void)argc;
+
+  if (!enif_inspect_binary(env, argv[0], &msg_hash) || msg_hash.size != HASH_SIZE ||
+      !get_seckey(env, argv[1], &seckey)) {
     return enif_make_badarg(env);
   }
 
@@ -126,11 +119,6 @@ secp256k1_nif_ecdsa_sign(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
       return enif_make_badarg(env);
     }
     ndata = nonce_data.data;
-  }
-
-  if (msg_hash.size != HASH_SIZE || seckey.size != SECKEY_SIZE ||
-      !secp256k1_ec_seckey_verify(ctx, seckey.data)) {
-    return enif_make_badarg(env);
   }
 
   /* Generate a ECDSA signature */

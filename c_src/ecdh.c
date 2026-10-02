@@ -19,14 +19,8 @@ secp256k1_nif_ecdh(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 
   unsigned char shared_secret[ECDH_SHARED_SECRET_SIZE];
 
-  // load arguments
-  if (!enif_inspect_binary(env, argv[0], &seckey) || !enif_inspect_binary(env, argv[1], &pubkey)) {
-    return enif_make_badarg(env);
-  }
-
-  // check arguments size
-  if (!(seckey.size == SECKEY_SIZE && secp256k1_ec_seckey_verify(ctx, seckey.data) &&
-        (pubkey.size == COMPRESSED_PUBKEY_SIZE || pubkey.size == UNCOMPRESSED_PUBKEY_SIZE))) {
+  if (!get_seckey(env, argv[0], &seckey) || !enif_inspect_binary(env, argv[1], &pubkey) ||
+      (pubkey.size != COMPRESSED_PUBKEY_SIZE && pubkey.size != UNCOMPRESSED_PUBKEY_SIZE)) {
     return enif_make_badarg(env);
   }
 

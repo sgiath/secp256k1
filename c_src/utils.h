@@ -5,6 +5,9 @@
 
 #include <erl_nif.h>
 #include <secp256k1.h>
+#include <secp256k1_extrakeys.h>
+
+#include "fault.h"
 
 /* Fixed sizes, in bytes, of values crossing the NIF boundary. */
 #define SECKEY_SIZE 32
@@ -42,6 +45,17 @@ void secure_erase(void *ptr, size_t len);
 int make_binary(ErlNifEnv *env, const unsigned char *data, size_t size, ERL_NIF_TERM *result);
 ERL_NIF_TERM error_result(ErlNifEnv *env, const char *error_msg);
 ERL_NIF_TERM allocation_failed(ErlNifEnv *env);
+
+/* Inspects `term` as a 32-byte binary holding a valid secret scalar. */
+int get_seckey(ErlNifEnv *env, ERL_NIF_TERM term, ErlNifBinary *seckey);
+
+/*
+ * Creates the keypair of the secret key `term`. Returns 1 on success.
+ * Otherwise stores badarg (not a valid secret key) or an error result in
+ * *result, leaves no secret in *keypair, and returns 0.
+ */
+int
+get_keypair(ErlNifEnv *env, ERL_NIF_TERM term, secp256k1_keypair *keypair, ERL_NIF_TERM *result);
 
 /*
  * libsecp256k1 illegal-argument and internal-error callbacks record events in
