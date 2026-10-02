@@ -90,4 +90,3 @@ make distclean
 - `ERTS_INCLUDE_DIR` must be set for native compilation; `elixir_make` usually supplies it.
 - `mix clean` maps to native `distclean`, deleting extracted `c_src/secp256k1/`.
 - Maintainers update the vendored release with `make vendor VERSION=vX.Y.Z`; the workflow verifies the signed upstream tag with GPG by default and requires the signing primary key to be listed in `scripts/secp256k1-release-signers.txt` (from upstream `SECURITY.md`). `--allow-unverified` is an explicit override.
-- Backlog.md MCP is the project task system. Use MCP tools for task creation/editing; do not edit backlog markdown directly.
