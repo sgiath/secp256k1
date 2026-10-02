@@ -1,4 +1,6 @@
-- Do not edit `vectors/*.csv` or `vectors/*.json` casually. Treat them as upstream snapshots; update `vectors/README.md` provenance if replacing them.
+- Do not edit `vectors/*.csv` or `vectors/*.json` casually. Treat them as upstream snapshots; update `vectors/README.md` provenance (commit-pinned URL and source SHA256) if replacing them.
 - Do not weaken vector expectations to fit implementation behavior.
 - Do not remove subprocess tests around formerly aborting MuSig probes; they protect BEAM crash boundaries.
+- Subprocess probes must reach native code: call `Secp256k1.NIF.*` directly with the malformed term. `Secp256k1.MuSig` guards raise `FunctionClauseError` before the NIF runs.
+- Tag slow tests (child BEAM subprocesses) `@tag :expensive`. Plain `mix test` excludes them; `mix check` runs them via `mix test --include expensive`.
 - Do not inline DER/vector parsing into individual tests. Keep shared parsing in `support/`.

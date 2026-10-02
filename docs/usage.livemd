@@ -209,26 +209,43 @@ Schnorr signatures (BIP-340) are simpler and more efficient than ECDSA. They use
 
 ### Signing a Message
 
-Schnorr signatures can sign a 32-byte hash or an arbitrary length message.
+BIP-340 signs messages of any length. Sign exactly the bytes your protocol
+specifies: Bitcoin Taproot signs a 32-byte sighash and Nostr signs the 32-byte
+event id, while other protocols sign the raw message. Signing a hash and signing
+the raw message produce different, non-interchangeable signatures.
 
 ```elixir
-# Signing a hash (recommended for Bitcoin)
+# Signing a 32-byte hash (as Taproot and Nostr do)
 msg_hash = :crypto.hash(:sha256, "Hello Schnorr")
 signature = Secp256k1.schnorr_sign(msg_hash, seckey)
 
 hex.(signature)
 ```
 
+```elixir
+# Signing a raw message of arbitrary length
+raw_message = "Hello Schnorr, signed without prehashing"
+raw_signature = Secp256k1.schnorr_sign(raw_message, seckey)
+
+hex.(raw_signature)
+```
+
+Messages larger than 65,536 bytes are signed and verified on dirty CPU
+schedulers, so hashing them does not block a normal BEAM scheduler.
+
 ### Verifying a Signature
 
-Verification requires the signature, the original message (or hash), and the x-only public key.
+Verification requires the signature, the exact signed bytes (the hash or the raw message), and the x-only public key.
 
 ```elixir
 # Derive x-only pubkey if you haven't already
 xonly_pubkey = Secp256k1.pubkey(seckey, :xonly)
 
 # Verify
-Secp256k1.schnorr_valid?(signature, msg_hash, xonly_pubkey)
+{
+  Secp256k1.schnorr_valid?(signature, msg_hash, xonly_pubkey),
+  Secp256k1.schnorr_valid?(raw_signature, raw_message, xonly_pubkey)
+}
 ```
 
 ## ECDH Shared Secrets
