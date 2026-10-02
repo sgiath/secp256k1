@@ -17,115 +17,64 @@
     "valid": [
       {
         "key_indices_len": 3,
-        "key_indices": [
-          0,
-          1,
-          2
-        ],
+        "key_indices": [0, 1, 2],
         "expected": "90539eede565f5d054f32cc0c220126889ed1e5d193baf15aef344fe59d4610c"
       },
       {
         "key_indices_len": 3,
-        "key_indices": [
-          2,
-          1,
-          0
-        ],
+        "key_indices": [2, 1, 0],
         "expected": "6204de8b083426dc6eaf9502d27024d53fc826bf7d2012148a0575435df54b2b"
       },
       {
         "key_indices_len": 3,
-        "key_indices": [
-          0,
-          0,
-          0
-        ],
+        "key_indices": [0, 0, 0],
         "expected": "b436e3bad62b8cd409969a224731c193d051162d8c5ae8b109306127da3aa935"
       },
       {
         "key_indices_len": 4,
-        "key_indices": [
-          0,
-          0,
-          1,
-          1
-        ],
+        "key_indices": [0, 0, 1, 1],
         "expected": "69bc22bfa5d106306e48a20679de1d7389386124d07571d0d872686028c26a3e"
       }
     ],
     "invalid": [
       {
         "key_indices_len": 2,
-        "key_indices": [
-          0,
-          3
-        ],
+        "key_indices": [0, 3],
         "tweak_indices_len": 0,
-        "tweak_indices": [
-          0
-        ],
-        "is_xonly": [
-          0
-        ],
+        "tweak_indices": [0],
+        "is_xonly": [0],
         "error": "MUSIG_PUBKEY"
       },
       {
         "key_indices_len": 2,
-        "key_indices": [
-          0,
-          4
-        ],
+        "key_indices": [0, 4],
         "tweak_indices_len": 0,
-        "tweak_indices": [
-          0
-        ],
-        "is_xonly": [
-          0
-        ],
+        "tweak_indices": [0],
+        "is_xonly": [0],
         "error": "MUSIG_PUBKEY"
       },
       {
         "key_indices_len": 2,
-        "key_indices": [
-          5,
-          0
-        ],
+        "key_indices": [5, 0],
         "tweak_indices_len": 0,
-        "tweak_indices": [
-          0
-        ],
-        "is_xonly": [
-          0
-        ],
+        "tweak_indices": [0],
+        "is_xonly": [0],
         "error": "MUSIG_PUBKEY"
       },
       {
         "key_indices_len": 2,
-        "key_indices": [
-          0,
-          1
-        ],
+        "key_indices": [0, 1],
         "tweak_indices_len": 1,
-        "tweak_indices": [
-          0
-        ],
-        "is_xonly": [
-          1
-        ],
+        "tweak_indices": [0],
+        "is_xonly": [1],
         "error": "MUSIG_TWEAK"
       },
       {
         "key_indices_len": 1,
-        "key_indices": [
-          6
-        ],
+        "key_indices": [6],
         "tweak_indices_len": 1,
-        "tweak_indices": [
-          1
-        ],
-        "is_xonly": [
-          0
-        ],
+        "tweak_indices": [1],
+        "is_xonly": [0],
         "error": "MUSIG_TWEAK"
       }
     ]
@@ -142,44 +91,29 @@
     ],
     "valid": [
       {
-        "pnonce_indices": [
-          0,
-          1
-        ],
+        "pnonce_indices": [0, 1],
         "expected": "035fe1873b4f2967f52fea4a06ad5a8eccbe9d0fd73068012c894e2e87ccb5804b024725377345bde0e9c33af3c43c0a29a9249f2f2956fa8cfeb55c8573d0262dc8",
         "invalid_nonce_idx": 0
       },
       {
-        "pnonce_indices": [
-          2,
-          3
-        ],
+        "pnonce_indices": [2, 3],
         "expected": "035fe1873b4f2967f52fea4a06ad5a8eccbe9d0fd73068012c894e2e87ccb5804b000000000000000000000000000000000000000000000000000000000000000000",
         "invalid_nonce_idx": 0
       }
     ],
     "invalid": [
       {
-        "pnonce_indices": [
-          0,
-          4
-        ],
+        "pnonce_indices": [0, 4],
         "expected": "",
         "invalid_nonce_idx": 1
       },
       {
-        "pnonce_indices": [
-          5,
-          1
-        ],
+        "pnonce_indices": [5, 1],
         "expected": "",
         "invalid_nonce_idx": 0
       },
       {
-        "pnonce_indices": [
-          6,
-          1
-        ],
+        "pnonce_indices": [6, 1],
         "expected": "",
         "invalid_nonce_idx": 0
       }
