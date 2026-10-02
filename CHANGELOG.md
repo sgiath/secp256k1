@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Breaking:** `Secp256k1.MuSig.pubkey_ec_tweak_add/2` and `Secp256k1.MuSig.pubkey_xonly_tweak_add/2` return `{:ok, tweaked_pubkey, cache}` instead of `{:ok, cache, tweaked_pubkey}`
+- MuSig2 resources created by a different library version are no longer taken over by the native code after a hot code upgrade. Using them raises `ArgumentError` instead of reading memory with the wrong layout. Hot upgrades with live MuSig2 resources across versions are not supported
 - MuSig2 sessions remember the key aggregation cache and message given to `nonce_process/3`, and secret nonces remember the message and cache given to `nonce_gen/5`. `partial_sign/4` returns `{:error, "keyagg cache does not match session"}`, `{:error, "secnonce was generated for a different keyagg cache"}`, or `{:error, "secnonce was generated for a different message"}` on a mismatch and consumes the nonce; `partial_sig_verify/5` returns `false` for a cache other than the session's. Caches are compared by value
 - `Secp256k1.Extrakeys.valid_seckey?/1` and `Secp256k1.Extrakeys.valid_pubkey?/1` return `false` for any term instead of raising `FunctionClauseError` for wrong shapes, matching the `Secp256k1` facade
 - Fail the NIF load instead of aborting the VM when the secp256k1 context cannot be allocated

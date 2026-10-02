@@ -40,7 +40,7 @@ First-party C glue for Elixir NIFs. All first-party C sources link into one `pri
 - Use the named wire-size constants in `utils.h` (`SECKEY_SIZE`, `HASH_SIZE`, `COMPRESSED_PUBKEY_SIZE`, `MUSIG_PUBNONCE_SIZE`, ...) instead of numeric literals; add a constant there for any new fixed size.
 - Functions that own secrets set `result` and `goto cleanup;` on every exit after the secret exists; a single `cleanup:` label erases the secrets and returns `result`.
 - First-party C follows the repo-root `.clang-format`. Check with `clang-format --dry-run --Werror c_src/*.c c_src/*.h`; the devenv git hook and CI run the same check.
-- MuSig resource types are stored in the per-instance state and opened with `ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER` so an upgraded instance can take over the established resource names.
+- MuSig resource types are stored in the per-instance state and opened with `ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER` under names suffixed with `MUSIG_RESOURCE_ABI` (`musig.h`), so an upgraded instance takes over live resources only from a library with the same wrapper layout. Bump `MUSIG_RESOURCE_ABI` whenever `keyagg_cache_wrapper`, `session_wrapper`, or `secnonce_wrapper` changes, or when the vendored libsecp256k1 version changes; otherwise a cross-version hot upgrade runs new destructors and accessors on old-layout memory. Hot upgrades across versions with live MuSig resources are unsupported: old resources stay with the old library and raise `ArgumentError`.
 
 ## SECURITY RULES
 

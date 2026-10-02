@@ -73,6 +73,9 @@ defmodule Secp256k1.MuSig do
       encodes only a handle to the live object, never the nonce, cache, or session state.
       Decoding it on another node, in another VM, or after the object was garbage collected
       produces a stale reference that raises `ArgumentError`.
+    * Hot code upgrades that change the library version are not supported while MuSig
+      resources are live. Resources created by a different version are not taken over by the
+      new native code; using them raises `ArgumentError`.
 
   Public nonces, aggregate nonces, partial signatures, and final signatures are serialized
   binaries that can be stored and transmitted.

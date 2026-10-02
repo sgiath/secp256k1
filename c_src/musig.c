@@ -49,9 +49,12 @@ open_resource_type(ErlNifEnv *env, const char *name, ErlNifResourceDtor *destruc
 int
 musig_open_resource_types(ErlNifEnv *env, secp256k1_nif_state *state)
 {
-  state->keyagg_cache_rt = open_resource_type(env, "keyagg_cache_resource", destruct_keyagg_cache);
-  state->session_rt = open_resource_type(env, "session_resource", destruct_session);
-  state->secnonce_rt = open_resource_type(env, "secnonce_resource", destruct_secnonce);
+  state->keyagg_cache_rt =
+    open_resource_type(env, "keyagg_cache_resource_v" MUSIG_RESOURCE_ABI, destruct_keyagg_cache);
+  state->session_rt =
+    open_resource_type(env, "session_resource_v" MUSIG_RESOURCE_ABI, destruct_session);
+  state->secnonce_rt =
+    open_resource_type(env, "secnonce_resource_v" MUSIG_RESOURCE_ABI, destruct_secnonce);
 
   return state->keyagg_cache_rt && state->session_rt && state->secnonce_rt;
 }

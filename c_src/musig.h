@@ -5,6 +5,18 @@
 
 #include <secp256k1_musig.h>
 
+/*
+ * Resource type names carry this ABI version. An upgraded NIF instance takes
+ * over resources only from a library with the same version, so it never runs
+ * its destructors or accessors on a wrapper with a different layout. After an
+ * upgrade across versions, older resources stay owned by the old library and
+ * fail get_* (ArgumentError). Bump this whenever a wrapper struct below
+ * changes or the vendored libsecp256k1 version changes (upstream MuSig opaque
+ * types are not portable between versions). Version 1 (lib_secp256k1 0.8.0
+ * and earlier) used unversioned names.
+ */
+#define MUSIG_RESOURCE_ABI "2"
+
 typedef struct {
   secp256k1_musig_keyagg_cache cache;
 } keyagg_cache_wrapper;
