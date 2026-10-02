@@ -22,12 +22,10 @@ defmodule Secp256k1Test.NifLifecycle do
     consumed_signer = hd(live_flow.signers)
 
     {:ok, consumed_secnonce, _pubnonce} =
-      MuSig.nonce_gen(
-        consumed_signer.seckey,
-        consumed_signer.pubkey,
-        message,
-        live_flow.cache,
-        nil
+      MuSig.nonce_gen(consumed_signer.pubkey,
+        seckey: consumed_signer.seckey,
+        msg: message,
+        cache: live_flow.cache
       )
 
     assert <<_::binary-size(32)>> =
@@ -83,7 +81,7 @@ defmodule Secp256k1Test.NifLifecycle do
     signers =
       Enum.map(signers, fn signer ->
         {:ok, secnonce, pubnonce} =
-          MuSig.nonce_gen(signer.seckey, signer.pubkey, message, cache, nil)
+          MuSig.nonce_gen(signer.pubkey, seckey: signer.seckey, msg: message, cache: cache)
 
         Map.merge(signer, %{secnonce: secnonce, pubnonce: pubnonce})
       end)
@@ -114,13 +112,13 @@ defmodule Secp256k1Test.NifLifecycle do
                  signer.pubkey,
                  cache,
                  session
-               )
+               ) == true
 
         partial_signature
       end)
 
     final_signature = MuSig.partial_sig_agg(session, partial_signatures)
 
-    assert Schnorr.valid?(final_signature, flow.message, flow.aggregate_xonly_pubkey)
+    assert Schnorr.valid?(final_signature, flow.message, flow.aggregate_xonly_pubkey) == true
   end
 end

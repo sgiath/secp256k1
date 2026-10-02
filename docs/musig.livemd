@@ -1,10 +1,12 @@
 # MuSig2 Multi-Signatures
 
 ```elixir
-# Use the local checkout when the notebook runs from this repo, Hex otherwise
+# Use the local checkout when the notebook runs from this library's repo, Hex otherwise
+local_mix = Path.expand("../mix.exs", __DIR__)
+
 lib_secp256k1 =
-  if File.exists?(Path.expand("../mix.exs", __DIR__)) do
-    {:lib_secp256k1, path: Path.expand("..", __DIR__)}
+  if File.exists?(local_mix) and File.read!(local_mix) =~ "app: :lib_secp256k1" do
+    {:lib_secp256k1, path: Path.dirname(local_mix)}
   else
     {:lib_secp256k1, "~> 0.8"}
   end
@@ -43,7 +45,7 @@ responsibility.
 | ------------------- | ------------------ | ------------------------------------------------------------------------------------------- |
 | ordered pubkey list | agreed out of band | identical, in the same order, for every signer                                              |
 | `keyagg_cache`      | `pubkey_agg/1`     | from that list, with the same tweaks applied by every signer                                |
-| `secnonce/pubnonce` | `nonce_gen/5`      | generated per signer with its own pubkey from the list and, when given, its matching seckey |
+| `secnonce/pubnonce` | `nonce_gen/2`      | generated per signer with its own pubkey from the list and, when given, its matching seckey |
 | `aggnonce`          | `nonce_agg/1`      | aggregated from every signer's public nonce                                                 |
 | `session`           | `nonce_process/3`  | from the aggregate nonce, the 32-byte message, and the cache                                |
 | partial signature   | `partial_sign/4`   | made with the signer's secnonce, the seckey matching its pubkey, the cache, and the session |
@@ -55,7 +57,7 @@ aggregate key. Agree on an order, for example BIP-327 `KeySort`, which sorts
 ### What the library checks
 
 A session remembers the cache and the message given to `nonce_process/3`. A
-secret nonce remembers the pubkey given to `nonce_gen/5` and, when they were
+secret nonce remembers the pubkey given to `nonce_gen/2` and, when they were
 given, the message and the cache. Caches are compared by value, so a cache
 recomputed from the same keys and tweaks matches.
 
@@ -70,8 +72,8 @@ recomputed from the same keys and tweaks matches.
 Everything else is up to you: each signer's pubkey must be in the aggregated
 list, the aggregate nonce must include every signer's public nonce, and the
 partial signatures given to `partial_sig_agg/2` must belong to the session.
-When `nonce_gen/5` received `nil` for the message or the cache, that value is
-not checked either, so pass both to `nonce_gen/5` whenever you know them.
+When `nonce_gen/2` did not receive the `:msg` or `:cache` option, that value is
+not checked either, so pass both to `nonce_gen/2` whenever you know them.
 
 > **NIF resources:** `keyagg_cache`, `session`, and `secnonce` values are NIF
 > resource references, not binaries. Any process on the same BEAM node can use
@@ -84,7 +86,7 @@ not checked either, so pass both to `nonce_gen/5` whenever you know them.
 > serialized binaries.
 
 > **Secret nonces are one-use:** never reuse MuSig2 secret nonces. Call
-> `nonce_gen/5` fresh for every signing attempt. Reusing a nonce with the same
+> `nonce_gen/2` fresh for every signing attempt. Reusing a nonce with the same
 > key can leak the secret key. Every `partial_sign/4` call that returns consumes
 > the nonce, including the errors listed above; later attempts return
 > `{:error, "nonce already used"}`. A call that raises `ArgumentError` (an
@@ -96,7 +98,9 @@ In this example, 3 parties (Alice, Bob, and Carol) want to sign a message togeth
 
 ### 1. Setup Signers
 
-We generate keys for our 3 participants.
+We generate keys for our 3 participants. These are disposable demo keys: the
+cells below keep them in notebook memory, so never use them for real funds and
+do not share a saved notebook or its output if it contains secret keys.
 
 ```elixir
 # Generate keys for 3 parties
@@ -141,7 +145,8 @@ message = :crypto.hash(:sha256, "Joint Account Authorization")
 # Each participant generates a nonce
 participants_with_nonces =
   Enum.map(participants, fn p ->
-    {:ok, secnonce, pubnonce} = MuSig.nonce_gen(p.seckey, p.pubkey, message, keyagg_cache, nil)
+    {:ok, secnonce, pubnonce} =
+      MuSig.nonce_gen(p.pubkey, seckey: p.seckey, msg: message, cache: keyagg_cache)
 
     p
     # KEEP SECRET!
@@ -222,9 +227,9 @@ true = Secp256k1.schnorr_valid?(final_signature, message, agg_xonly_pubkey)
 
 ## Security Considerations
 
-1. **Nonce Reuse**: never reuse nonces. The `nonce_gen` function uses
-   randomness and the message to protect against this, but you must ensure that
-   a fresh `nonce_gen` call is made for every signature attempt.
+1. **Nonce Reuse**: never reuse nonces. `nonce_gen/2` draws fresh randomness
+   on every call, but you must ensure that a fresh `nonce_gen/2` call is made
+   for every signature attempt.
 2. **Round Communication**: MuSig2 is a 2-round protocol.
    - Round 1: Exchange public nonces.
    - Round 2: Exchange partial signatures.

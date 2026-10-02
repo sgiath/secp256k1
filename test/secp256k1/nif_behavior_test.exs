@@ -62,9 +62,7 @@ defmodule Secp256k1Test.NifBehavior do
       MuSig.pubkey_xonly_tweak_add(resource, short_scalar)
     end
 
-    assert_raise FunctionClauseError, fn ->
-      MuSig.nonce_gen(nil, missing_pubkey, nil, nil, nil)
-    end
+    assert_raise FunctionClauseError, fn -> MuSig.nonce_gen(missing_pubkey) end
 
     assert_raise FunctionClauseError, fn -> MuSig.nonce_agg(empty_list) end
 
@@ -145,7 +143,10 @@ defmodule Secp256k1Test.NifBehavior do
     seckey = d("0000000000000000000000000000000000000000000000000000000000000001")
     pubkey = ECDSA.pubkey(seckey)
     {:ok, _aggregate_pubkey, cache} = MuSig.pubkey_agg([pubkey])
-    {:ok, _secnonce, pubnonce} = MuSig.nonce_gen(seckey, pubkey, message, cache, nil)
+
+    {:ok, _secnonce, pubnonce} =
+      MuSig.nonce_gen(pubkey, seckey: seckey, msg: message, cache: cache)
+
     aggnonce = MuSig.nonce_agg([pubnonce])
     session = MuSig.nonce_process(aggnonce, message, cache)
 

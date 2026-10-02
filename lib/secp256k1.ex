@@ -66,7 +66,7 @@ defmodule Secp256k1 do
       parsed by `ecdsa_signature_serialize_der/1` or `ecdsa_signature_normalize/1`, MuSig
       resources that are stale, of the wrong kind, or created by another NIF library, and MuSig
       public keys, public nonces, aggregate nonces, or partial signatures that cannot be parsed. A
-      `Secp256k1.MuSig.nonce_gen/5` secret key that does not derive the given public key also
+      `Secp256k1.MuSig.nonce_gen/2` secret key that does not derive the given public key also
       raises `ArgumentError`.
     * **Malformed public keys** - a correctly sized public key that does not encode a curve
       point returns `{:error, reason}` from `ecdh/2`, `convert_pubkey/2`,
@@ -95,6 +95,13 @@ defmodule Secp256k1 do
       once when the NIF loads, before these callbacks are installed: on a miscompiled
       library it fails, and libsecp256k1's default error callback prints a message and
       aborts the VM.
+
+  **Exceptions can contain secrets.** A `FunctionClauseError` report lists the call's
+  arguments, and stacktraces of `ArgumentError` and other exceptions raised from a NIF include
+  them too. For functions that take secret keys, auxiliary randomness, tweaks derived from
+  secrets, or other secret-bearing values, those arguments are the secrets. Do not log full
+  exception reports or stacktraces from such calls; redact the arguments before logging. This
+  affects only reporting: the exception classes above are as documented.
 
   """
   @moduledoc authors: ["sgiath <secp256k1@sgiath.dev>"]
@@ -228,11 +235,12 @@ defmodule Secp256k1 do
   Returns the converted public key, or `{:error, reason}` when the correctly sized input does not
   encode a valid secp256k1 public key.
   """
-  @spec convert_pubkey(pubkey :: full_pubkey(), type :: :compressed | :uncompressed | :xonly) ::
-          compressed_pubkey()
-          | uncompressed_pubkey()
-          | xonly_pubkey()
-          | {:error, binary() | :allocation_failed}
+  @spec convert_pubkey(pubkey :: uncompressed_pubkey(), type :: :compressed) ::
+          compressed_pubkey() | {:error, binary() | :allocation_failed}
+  @spec convert_pubkey(pubkey :: compressed_pubkey(), type :: :uncompressed) ::
+          uncompressed_pubkey() | {:error, binary() | :allocation_failed}
+  @spec convert_pubkey(pubkey :: compressed_pubkey(), type :: :xonly) ::
+          xonly_pubkey() | {:error, binary() | :allocation_failed}
   def convert_pubkey(pubkey, :compressed) when is_uncompressed_pubkey(pubkey) do
     Secp256k1.ECDSA.compress_pubkey(pubkey)
   end

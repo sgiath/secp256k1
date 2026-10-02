@@ -83,7 +83,7 @@ true = Secp256k1.schnorr_valid?(signature, raw_message, xonly_pubkey)
 
 ### DO
 
-- **Hash messages for ECDSA and MuSig2**: `ecdsa_sign/2`, `MuSig.nonce_gen/5`, and `MuSig.nonce_process/3` take exactly 32-byte messages. Schnorr signs messages of any length; pass whatever bytes your protocol signs.
+- **Hash messages for ECDSA and MuSig2**: `ecdsa_sign/2`, `MuSig.nonce_gen/2` (`:msg`), and `MuSig.nonce_process/3` take exactly 32-byte messages. Schnorr signs messages of any length; pass whatever bytes your protocol signs.
 - **Use secp256k1 pubkeys for ECDSA**: `ecdsa_valid?/3` accepts 33-byte compressed or 65-byte uncompressed pubkeys.
 - **Reject high-S by default**: Normalize only when the protocol deliberately accepts malleable signature forms, then use the normalized bytes thereafter.
 - **Separate Bitcoin sighash bytes**: DER conversion handles only the signature, not a trailing transaction sighash byte.
@@ -94,35 +94,39 @@ true = Secp256k1.schnorr_valid?(signature, raw_message, xonly_pubkey)
 
 ### DON'T
 
-- **Don't reuse nonces in MuSig2**: Call `nonce_gen/5` fresh for every signature attempt. Nonce reuse leaks the secret key.
+- **Don't reuse nonces in MuSig2**: Call `nonce_gen/2` fresh for every signature attempt. Nonce reuse leaks the secret key.
 - **Don't use custom Schnorr AUX values**: `sign32/3` exists but is NOT RECOMMENDED. Use the 2-arg version.
 - **Don't mix pubkey formats**: ECDSA uses compressed (33 bytes) or uncompressed (65 bytes); Schnorr uses x-only (32 bytes).
 - **Don't sign unhashed data with ECDSA or MuSig2**: Their signing APIs expect a 32-byte hash. This does not apply to Schnorr.
 - **Don't persist or transport MuSig resources**: `keyagg_cache`, `session`, and `secnonce` are NIF resource references. Any process on the same node can use them, and sharing a `secnonce` reference does not duplicate the nonce, but `:erlang.term_to_binary/1` keeps only a handle that is stale on other nodes, in other VMs, or after garbage collection. Resources created before a hot code upgrade to a different library version are stale too.
 - **Don't vary the MuSig2 key order**: All signers must pass the same pubkey list in the same order to `pubkey_agg/1`.
-- **Don't call `nonce_gen/5` without the message and cache when you know them**: A secret nonce generated with `msg` and `cache` makes `partial_sign/4` reject a session for another message or cache. With `nil`, those mismatches go unchecked. `partial_sign/4` always rejects a cache other than the session's.
+- **Don't call `nonce_gen/2` without `:msg` and `:cache` when you know them**: A secret nonce generated with `:msg` and `:cache` makes `partial_sign/4` reject a session for another message or cache. Without them, those mismatches go unchecked. `partial_sign/4` always rejects a cache other than the session's.
 - **Don't treat key tweaking as hashing**: Derive the scalar according to BIP-32 or BIP-341 before calling the tweak API.
+- **Don't log full exception reports from calls that take secrets**: Exception reports and stacktraces include the call's arguments. See [Error Handling](#error-handling).
 
 ## Error Handling
 
 | Situation                                                                                                           | Result                                                                                   |
 | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Wrong type or binary size                                                                                           | `FunctionClauseError`                                                                    |
+| Wrong type or binary size, including a `MuSig.nonce_gen/2` option value                                             | `FunctionClauseError`                                                                    |
 | `valid_seckey?/1`, `valid_pubkey?/1` with any invalid term                                                          | `false`                                                                                  |
 | Wrong-type or wrong-size element in the `MuSig.pubkey_agg/1`, `nonce_agg/1`, or `partial_sig_agg/2` list            | `ArgumentError` (only the outer list is guarded)                                         |
-| Right-sized secret key that is not a valid scalar (including `MuSig.nonce_gen/5`)                                   | `ArgumentError`                                                                          |
+| Right-sized secret key that is not a valid scalar (including `MuSig.nonce_gen/2` `:seckey`)                         | `ArgumentError`                                                                          |
 | Malformed DER (8-72 bytes); unparsable compact signature in DER serialization or normalization                      | `ArgumentError`                                                                          |
 | Unparsable MuSig pubkey, public nonce, aggregate nonce, or partial signature; wrong-kind or stale MuSig resource    | `ArgumentError`                                                                          |
-| `MuSig.nonce_gen/5` secret key that does not derive the given pubkey                                                | `ArgumentError`                                                                          |
+| `MuSig.nonce_gen/2` `:seckey` that does not derive the given pubkey                                                 | `ArgumentError`                                                                          |
+| `MuSig.nonce_gen/2` unknown option                                                                                  | `ArgumentError`                                                                          |
 | Right-sized but invalid pubkey in `ecdh/2`, `convert_pubkey/2`, `ec_pubkey_tweak_add/2`, `xonly_pubkey_tweak_add/2` | `{:error, reason}`                                                                       |
 | Invalid signature, key, or tweak in `ecdsa_valid?/3`, `schnorr_valid?/3`, `xonly_pubkey_tweak_add_check/4`          | `false`                                                                                  |
 | `MuSig.partial_sig_verify/5` with a non-verifying partial signature or a cache other than the session's             | `false`                                                                                  |
 | Rejected operation (out-of-range tweak, invalid result key, used MuSig nonce, ...)                                  | `{:error, reason}` with a binary reason                                                  |
 | Native allocation failure                                                                                           | `{:error, :allocation_failed}`                                                           |
+| `MuSig.nonce_gen/2` when the OS random number generator fails                                                       | `{:error, "RNG failed"}`                                                                 |
 | `MuSig.partial_sign/4` with a secret key not matching the nonce's pubkey                                            | `{:error, "secret key does not match secnonce public key"}`; the nonce is consumed       |
 | `MuSig.partial_sign/4` with a cache other than the session's                                                        | `{:error, "keyagg cache does not match session"}`; the nonce is consumed                 |
 | `MuSig.partial_sign/4` with a nonce generated for another cache                                                     | `{:error, "secnonce was generated for a different keyagg cache"}`; the nonce is consumed |
 | `MuSig.partial_sign/4` with a nonce generated for another message                                                   | `{:error, "secnonce was generated for a different message"}`; the nonce is consumed      |
+| `MuSig.partial_sign/4` native allocation failure (signature computed, result not allocated)                         | `{:error, :allocation_failed}`; the nonce is consumed                                    |
 | libsecp256k1 illegal-argument callback                                                                              | `ArgumentError` (nothing is printed)                                                     |
 | libsecp256k1 internal-error callback                                                                                | `{:error, "libsecp256k1 internal error"}`                                                |
 | libsecp256k1 self-test failure when the NIF loads (miscompiled library)                                             | libsecp256k1 prints a message and aborts the VM                                          |
@@ -143,19 +147,22 @@ case Secp256k1.ecdh(seckey, received_pubkey) do
 end
 ```
 
+Exception reports can contain secrets: a `FunctionClauseError` lists the call's arguments, and exception stacktraces include them. Do not log full exception reports or stacktraces from calls that take secret keys or other secret-bearing values; redact the arguments first. The exception classes in the table above are unchanged.
+
 ## Common Mistakes
 
-| Mistake                 | Problem                                | Fix                                                        |
-| ----------------------- | -------------------------------------- | ---------------------------------------------------------- |
-| Hashless ECDSA/MuSig2   | These APIs expect a 32-byte hash       | Use `:crypto.hash(:sha256, msg)` first                     |
-| Wrong pubkey type       | ECDSA/Schnorr use different formats    | ECDSA: `:compressed` or `:uncompressed`, Schnorr: `:xonly` |
-| Reusing MuSig nonces    | Leaks secret key                       | Always call `nonce_gen/5` fresh                            |
-| Invalid binary size     | Operations raise `FunctionClauseError` | Use documented sizes; key predicates return `false`        |
-| Invalid key encoding    | Correct size does not imply validity   | Use `valid_seckey?/1` or `valid_pubkey?/1` before use      |
-| Passing DER to verify   | Verification expects compact signature | Parse DER; normalize only if the protocol permits high-S   |
-| Forgetting to aggregate | MuSig requires full protocol           | Follow all 7 steps in MuSig guide                          |
-| Unordered MuSig keys    | Different order, different agg key     | All signers use the same ordered pubkey list               |
-| Nonce without msg/cache | Message and cache go unchecked         | Pass `msg` and `cache` to `nonce_gen/5` when known         |
+| Mistake                   | Problem                                  | Fix                                                        |
+| ------------------------- | ---------------------------------------- | ---------------------------------------------------------- |
+| Hashless ECDSA/MuSig2     | These APIs expect a 32-byte hash         | Use `:crypto.hash(:sha256, msg)` first                     |
+| Wrong pubkey type         | ECDSA/Schnorr use different formats      | ECDSA: `:compressed` or `:uncompressed`, Schnorr: `:xonly` |
+| Reusing MuSig nonces      | Leaks secret key                         | Always call `nonce_gen/2` fresh                            |
+| Invalid binary size       | Operations raise `FunctionClauseError`   | Use documented sizes; key predicates return `false`        |
+| Invalid key encoding      | Correct size does not imply validity     | Use `valid_seckey?/1` or `valid_pubkey?/1` before use      |
+| Passing DER to verify     | Verification expects compact signature   | Parse DER; normalize only if the protocol permits high-S   |
+| Forgetting to aggregate   | MuSig requires full protocol             | Follow all 7 steps in MuSig guide                          |
+| Unordered MuSig keys      | Different order, different agg key       | All signers use the same ordered pubkey list               |
+| Nonce without msg/cache   | Message and cache go unchecked           | Pass `:msg` and `:cache` to `nonce_gen/2` when known       |
+| Logging exception reports | Arguments, including secrets, are logged | Redact arguments of calls that take secrets                |
 
 ## MuSig2 Protocol (Summary)
 
@@ -167,9 +174,9 @@ end
 # and verify the final signature against the tweaked key
 {:ok, <<_parity, agg_pubkey::binary>>, cache} = MuSig.pubkey_xonly_tweak_add(cache, tweak)
 
-# 2. Generate nonces (each signer, with its own seckey, the matching pubkey from `pubkeys`,
+# 2. Generate nonces (each signer, for the matching pubkey from `pubkeys`, with its own seckey
 #    and the msg and final cache when known)
-{:ok, secnonce, pubnonce} = MuSig.nonce_gen(seckey, pubkey, msg, cache, nil)
+{:ok, secnonce, pubnonce} = MuSig.nonce_gen(pubkey, seckey: seckey, msg: msg, cache: cache)
 
 # 3. Aggregate all signers' public nonces
 aggnonce = MuSig.nonce_agg(pubnonces)
@@ -194,7 +201,7 @@ true = Secp256k1.schnorr_valid?(final_sig, msg, agg_pubkey)
 
 - [ ] Secret keys generated from secure random source
 - [ ] Externally received keys validated before use
-- [ ] Secret keys never logged or exposed
+- [ ] Secret keys never logged or exposed, including through exception reports or stacktraces
 - [ ] ECDSA and MuSig2 messages hashed to 32 bytes before signing
 - [ ] MuSig nonces never reused
 - [ ] MuSig nonces generated with the message and key aggregation cache when known

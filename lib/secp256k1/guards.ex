@@ -60,4 +60,24 @@ defmodule Secp256k1.Guards do
   Is Schnorr signature (probably) - binary 64 bytes long
   """
   defguard is_schnorr_sig(sig) when is_bin_size(sig, 64)
+
+  @doc """
+  Is MuSig public nonce (probably) - binary 66 bytes long
+  """
+  defguard is_musig_pubnonce(pubnonce) when is_bin_size(pubnonce, 66)
+
+  @doc """
+  Is MuSig aggregate nonce (probably) - binary 66 bytes long
+  """
+  defguard is_musig_aggnonce(aggnonce) when is_bin_size(aggnonce, 66)
+
+  @doc """
+  Is MuSig partial signature (probably) - binary 32 bytes long
+  """
+  defguard is_musig_partial_sig(psig) when is_bin_size(psig, 32)
+
+  @doc """
+  Is MuSig nonce extra input (probably) - binary 32 bytes long
+  """
+  defguard is_musig_nonce_extra(extra) when is_bin_size(extra, 32)
 end

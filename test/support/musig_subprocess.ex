@@ -6,17 +6,20 @@ defmodule Secp256k1Test.MuSigSubprocess do
   @deadline_ms 15_000
 
   @doc """
-  Evaluates `expression` in a fresh BEAM that loads this build's code.
+  Evaluates `setup`, then `probe`, in a fresh BEAM that loads this build's code.
 
-  Returns `{output, exit_status}`. A child still running after #{@deadline_ms} ms is killed
-  and returns `{output, :timeout}`.
+  The child prints `MUSIG_SUBPROCESS_PROBE` between the two, so an exception reported after
+  that line came from `probe`, not from `setup`. Returns `{output, exit_status}`. A child
+  still running after #{@deadline_ms} ms is killed and returns `{output, :timeout}`.
   """
-  def run(expression) when is_binary(expression) do
+  def run(setup, probe) when is_binary(setup) and is_binary(probe) do
     elixir = System.find_executable("elixir") || raise "elixir executable not found in PATH"
 
     code = """
     try do
-      #{expression}
+      #{setup}
+      IO.puts("MUSIG_SUBPROCESS_PROBE")
+      #{probe}
       IO.puts("MUSIG_SUBPROCESS_OK")
     rescue
       exception in ArgumentError ->

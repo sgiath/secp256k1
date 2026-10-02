@@ -51,7 +51,7 @@ defmodule Secp256k1Test.MuSigVectors do
   #   only.
   # - Sign errors that need an injected secret nonce (the signer's pubkey missing from the key
   #   list, which BIP-327 marks optional and libsecp256k1 does not check, and an invalid
-  #   secnonce): `MuSig.nonce_gen/5` is the only way to obtain a secnonce.
+  #   secnonce): `MuSig.nonce_gen/2` is the only way to obtain a secnonce.
   @excluded [
     {:sign_verify_valid, 4, "Empty message"},
     {:sign_verify_valid, 5, "38-byte message"},
@@ -129,7 +129,7 @@ defmodule Secp256k1Test.MuSigVectors do
 
       session = MuSig.nonce_process(vector.aggnonce, vector.msg, cache)
 
-      assert verify(vector.psig, vector, cache, session)
+      assert verify(vector.psig, vector, cache, session) == true
     end
   end
 
@@ -208,7 +208,7 @@ defmodule Secp256k1Test.MuSigVectors do
 
       session = MuSig.nonce_process(vector.aggnonce, vector.msg, cache)
 
-      assert verify(vector.psig, vector, cache, session)
+      assert verify(vector.psig, vector, cache, session) == true
     end
   end
 
@@ -240,7 +240,7 @@ defmodule Secp256k1Test.MuSigVectors do
       assert MuSig.partial_sig_agg(session, vector.psigs) == vector.expected
 
       <<_parity, agg_xonly::binary-size(32)>> = MuSig.pubkey_get(cache)
-      assert Schnorr.valid?(vector.expected, vector.msg, agg_xonly)
+      assert Schnorr.valid?(vector.expected, vector.msg, agg_xonly) == true
     end
   end
 

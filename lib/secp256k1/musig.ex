@@ -16,7 +16,7 @@ defmodule Secp256k1.MuSig do
        example BIP327 `KeySort`, which sorts 33-byte compressed keys lexicographically
        (`Enum.sort/1`). Apply any `pubkey_ec_tweak_add/2` or `pubkey_xonly_tweak_add/2`
        tweaks identically, in the same order, and use the returned cache from then on.
-    2. `nonce_gen/5` - each signer generates a fresh nonce pair for its own key. `pubkey` must
+    2. `nonce_gen/2` - each signer generates a fresh nonce pair for its own key. `pubkey` must
        be that signer's individual public key from the aggregated list, and the secret key
        later passed to `partial_sign/4` must derive it. Pass the secret key here when
        available; a secret key that does not derive `pubkey` raises `ArgumentError`. Pass the
@@ -37,7 +37,7 @@ defmodule Secp256k1.MuSig do
   ## Transcript checks
 
   A session remembers the key aggregation cache and the message given to `nonce_process/3`.
-  A secret nonce remembers the public key given to `nonce_gen/5` and, when they were given,
+  A secret nonce remembers the public key given to `nonce_gen/2` and, when they were given,
   the message and the cache. Caches are compared by value: a cache recomputed from the same
   keys and tweaks matches.
 
@@ -56,8 +56,8 @@ defmodule Secp256k1.MuSig do
     * the aggregate nonce passed to `nonce_process/3` includes the signer's public nonce;
     * the partial signatures passed to `partial_sig_agg/2` were made for that session (verify
       each one with `partial_sig_verify/5` first);
-    * the message and cache match the transcript when `nonce_gen/5` received `nil` for them.
-      Pass both to `nonce_gen/5` whenever they are known.
+    * the message and cache match the transcript when `nonce_gen/2` did not receive them.
+      Pass both to `nonce_gen/2` whenever they are known.
 
   ## Resources
 
@@ -91,8 +91,11 @@ defmodule Secp256k1.MuSig do
 
       # 2. Nonce generation: each signer uses its own key pair
       msg_hash = :crypto.hash(:sha256, "Joint Account")
-      {:ok, alice_secnonce, alice_pubnonce} = Secp256k1.MuSig.nonce_gen(alice_sec, alice_pub, msg_hash, cache, nil)
-      {:ok, bob_secnonce, bob_pubnonce} = Secp256k1.MuSig.nonce_gen(bob_sec, bob_pub, msg_hash, cache, nil)
+      {:ok, alice_secnonce, alice_pubnonce} =
+        Secp256k1.MuSig.nonce_gen(alice_pub, seckey: alice_sec, msg: msg_hash, cache: cache)
+
+      {:ok, bob_secnonce, bob_pubnonce} =
+        Secp256k1.MuSig.nonce_gen(bob_pub, seckey: bob_sec, msg: msg_hash, cache: cache)
 
       # 3. Nonce aggregation
       aggnonce = Secp256k1.MuSig.nonce_agg([alice_pubnonce, bob_pubnonce])
@@ -132,14 +135,14 @@ defmodule Secp256k1.MuSig do
   @opaque session :: reference()
 
   @typedoc """
-  One-use secret nonce resource returned by `nonce_gen/5`.
+  One-use secret nonce resource returned by `nonce_gen/2`.
 
   Node-local and shared by reference: `partial_sign/4` consumes it for every holder. Never
   persist, send to another node, or reuse it.
   """
   @opaque secnonce :: reference()
 
-  @typedoc "Serialized 66-byte public nonce from `nonce_gen/5`; safe to transmit."
+  @typedoc "Serialized 66-byte public nonce from `nonce_gen/2`; safe to transmit."
   @type pubnonce :: <<_::528>>
 
   @typedoc "Serialized 66-byte aggregate nonce from `nonce_agg/1`; safe to transmit."
@@ -147,6 +150,15 @@ defmodule Secp256k1.MuSig do
 
   @typedoc "Serialized 32-byte partial signature from `partial_sign/4`; safe to transmit."
   @type partial_sig :: <<_::256>>
+
+  @typedoc """
+  Option for `nonce_gen/2`. Every option is optional; `nil` is the same as leaving it out.
+  """
+  @type nonce_gen_opt ::
+          {:seckey, Secp256k1.seckey() | nil}
+          | {:msg, Secp256k1.hash() | nil}
+          | {:cache, keyagg_cache() | nil}
+          | {:extra, <<_::256>> | nil}
 
   @doc """
   Aggregates individual full public keys.
@@ -197,36 +209,58 @@ defmodule Secp256k1.MuSig do
   @doc """
   Generates a fresh nonce pair for one signer.
 
-  Arguments:
-  - `seckey`: (Optional) The signer's secret key. When given, it must be a valid secret scalar
-    that derives `pubkey`; otherwise this raises `ArgumentError`. Passing it strengthens nonce
-    derivation against bad randomness.
-  - `pubkey`: The signer's individual full public key, as passed to `pubkey_agg/1`. The
-    secret key later passed to `partial_sign/4` must derive it. Unparsable keys raise
-    `ArgumentError`.
-  - `msg`: (Optional) The 32-byte message that will be signed, if already known.
-  - `cache`: (Optional) The key aggregation cache of this signing transcript, after all tweaks.
-  - `extra`: (Optional) 32 bytes of extra input for nonce derivation.
+  `pubkey` is the signer's individual full public key, as passed to `pubkey_agg/1`. The
+  secret key later passed to `partial_sign/4` must derive it. Unparsable keys raise
+  `ArgumentError`.
+
+  ## Options
+
+    * `:seckey` - the signer's secret key. When given, it must be a valid secret scalar that
+      derives `pubkey`; otherwise this raises `ArgumentError`. Passing it strengthens nonce
+      derivation against bad randomness.
+    * `:msg` - the 32-byte message that will be signed, if already known.
+    * `:cache` - the key aggregation cache of this signing transcript, after all tweaks.
+    * `:extra` - 32 bytes of extra input for nonce derivation.
+
+  `opts` is a keyword list. Every option defaults to `nil`, meaning not given. An unknown
+  option raises `ArgumentError`; `opts` that is not a list, or an option value of the wrong
+  type or size, raises `FunctionClauseError`.
 
   Returns a secret nonce resource and a serialized public nonce. The secret nonce is bound to
-  `pubkey` and, when given, to `msg` and `cache`: `partial_sign/4` rejects a session for
-  another message or another cache. With `nil`, that value is not checked, so pass `msg` and
-  `cache` whenever they are known. Call this for every signing attempt; never reuse a secret
-  nonce.
+  `pubkey` and, when given, to `:msg` and `:cache`: `partial_sign/4` rejects a session for
+  another message or another cache. Without them, that value is not checked, so pass `:msg`
+  and `:cache` whenever they are known. Call this for every signing attempt; never reuse a
+  secret nonce.
+
+  Returns `{:error, "RNG failed"}` when the operating system's random number generator
+  fails; no nonce is created.
+
+  ## Examples
+
+      {:ok, secnonce, pubnonce} =
+        Secp256k1.MuSig.nonce_gen(pubkey, seckey: seckey, msg: msg_hash, cache: cache)
   """
-  @spec nonce_gen(
-          Secp256k1.seckey() | nil,
-          Secp256k1.full_pubkey(),
-          Secp256k1.hash() | nil,
-          keyagg_cache() | nil,
-          <<_::256>> | nil
-        ) :: {:ok, secnonce(), pubnonce()} | {:error, binary() | :allocation_failed}
-  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
-  def nonce_gen(seckey, pubkey, msg, cache, extra)
-      when (is_nil(seckey) or is_seckey(seckey)) and is_full_pubkey(pubkey) and
-             (is_nil(msg) or is_hash(msg)) and (is_nil(cache) or is_reference(cache)) and
-             (is_nil(extra) or is_bin_size(extra, 32)),
-      do: Secp256k1.NIF.musig_nonce_gen(seckey, pubkey, msg, cache, extra)
+  @spec nonce_gen(Secp256k1.full_pubkey(), [nonce_gen_opt()]) ::
+          {:ok, secnonce(), pubnonce()} | {:error, binary() | :allocation_failed}
+  def nonce_gen(pubkey, opts \\ []) when is_full_pubkey(pubkey) and is_list(opts) do
+    # Keyword.validate!/2 would put the whole option list, secret key included, into the
+    # exception message; report only the offending keys.
+    case Keyword.validate(opts, seckey: nil, msg: nil, cache: nil, extra: nil) do
+      {:ok, opts} ->
+        nonce_gen_nif(opts[:seckey], pubkey, opts[:msg], opts[:cache], opts[:extra])
+
+      {:error, keys} ->
+        raise ArgumentError,
+              "invalid nonce_gen/2 options #{inspect(keys)}; " <>
+                "allowed keys are :seckey, :msg, :cache, and :extra"
+    end
+  end
+
+  defp nonce_gen_nif(seckey, pubkey, msg, cache, extra)
+       when (is_nil(seckey) or is_seckey(seckey)) and (is_nil(msg) or is_hash(msg)) and
+              (is_nil(cache) or is_reference(cache)) and
+              (is_nil(extra) or is_musig_nonce_extra(extra)),
+       do: Secp256k1.NIF.musig_nonce_gen(seckey, pubkey, msg, cache, extra)
 
   @doc """
   Aggregates the public nonces of all signers.
@@ -247,13 +281,13 @@ defmodule Secp256k1.MuSig do
   @spec nonce_process(aggnonce(), Secp256k1.hash(), keyagg_cache()) ::
           session() | {:error, binary() | :allocation_failed}
   def nonce_process(aggnonce, msg, cache)
-      when is_bin_size(aggnonce, 66) and is_hash(msg) and is_reference(cache),
+      when is_musig_aggnonce(aggnonce) and is_hash(msg) and is_reference(cache),
       do: Secp256k1.NIF.musig_nonce_process(aggnonce, msg, cache)
 
   @doc """
   Creates a partial signature.
 
-  `secnonce` must come from this signer's `nonce_gen/5` call, `seckey` must derive the public
+  `secnonce` must come from this signer's `nonce_gen/2` call, `seckey` must derive the public
   key passed to that call, and `cache` and `session` must belong to the same signing
   transcript. See "Transcript checks" in the module documentation for what is checked.
 
@@ -263,12 +297,15 @@ defmodule Secp256k1.MuSig do
 
     * `{:error, "keyagg cache does not match session"}` - `cache` differs from the cache
       given to `nonce_process/3`.
-    * `{:error, "secnonce was generated for a different keyagg cache"}` - `nonce_gen/5`
+    * `{:error, "secnonce was generated for a different keyagg cache"}` - `nonce_gen/2`
       received a different cache.
-    * `{:error, "secnonce was generated for a different message"}` - `nonce_gen/5` received
+    * `{:error, "secnonce was generated for a different message"}` - `nonce_gen/2` received
       a message other than the session's.
     * `{:error, "secret key does not match secnonce public key"}` - `seckey` does not derive
-      the public key given to `nonce_gen/5`.
+      the public key given to `nonce_gen/2`.
+    * `{:error, :allocation_failed}` - the partial signature was computed but its binary
+      could not be allocated. The nonce is consumed and the partial signature is lost: start
+      a new signing attempt with fresh nonces.
     * `{:error, "nonce already used"}` - every call after the nonce was consumed.
   """
   @spec partial_sign(secnonce(), Secp256k1.seckey(), keyagg_cache(), session()) ::
@@ -285,7 +322,7 @@ defmodule Secp256k1.MuSig do
   - `psig`: The partial signature received from the signer.
   - `pubnonce`: The public nonce the same signer contributed to `nonce_agg/1`.
   - `pubkey`: The same signer's individual full public key, as passed to `pubkey_agg/1` and
-    `nonce_gen/5`.
+    `nonce_gen/2`.
   - `cache`: The key aggregation cache of this signing transcript.
   - `session`: The session returned by `nonce_process/3` for this signing transcript.
 
@@ -301,8 +338,8 @@ defmodule Secp256k1.MuSig do
           session()
         ) :: boolean()
   def partial_sig_verify(psig, pubnonce, pubkey, cache, session)
-      when is_bin_size(psig, 32) and is_bin_size(pubnonce, 66) and is_full_pubkey(pubkey) and
-             is_reference(cache) and is_reference(session),
+      when is_musig_partial_sig(psig) and is_musig_pubnonce(pubnonce) and is_reference(cache) and
+             is_reference(session) and is_full_pubkey(pubkey),
       do: Secp256k1.NIF.musig_partial_sig_verify(psig, pubnonce, pubkey, cache, session)
 
   @doc """
