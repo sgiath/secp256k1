@@ -231,7 +231,7 @@ secp256k1_nif_musig_nonce_process(ErlNifEnv *env, int argc, const ERL_NIF_TERM a
   secp256k1_musig_aggnonce aggnonce;
   keyagg_cache_wrapper *cache;
   secp256k1_musig_session session;
-  ERL_NIF_TERM session_term;
+  ERL_NIF_TERM result;
 
   (void)argc;
 
@@ -244,12 +244,15 @@ secp256k1_nif_musig_nonce_process(ErlNifEnv *env, int argc, const ERL_NIF_TERM a
   }
 
   if (!secp256k1_musig_nonce_process(ctx, &session, &aggnonce, bin_msg.data, &cache->cache)) {
-    return error_result(env, "secp256k1_musig_nonce_process failed");
+    result = error_result(env, "secp256k1_musig_nonce_process failed");
+    goto cleanup;
   }
 
-  if (!make_session_resource(env, &session, &cache->cache, bin_msg.data, &session_term)) {
-    return allocation_failed(env);
+  if (!make_session_resource(env, &session, &cache->cache, bin_msg.data, &result)) {
+    result = allocation_failed(env);
   }
 
-  return session_term;
+cleanup:
+  secure_erase(&session, sizeof(session));
+  return result;
 }
