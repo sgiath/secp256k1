@@ -2,23 +2,27 @@
 
 ## Unreleased
 
+- **Breaking:** `Secp256k1.MuSig.nonce_gen(seckey, pubkey, msg, cache, extra)` is replaced by `Secp256k1.MuSig.nonce_gen/2`, which takes the signer's public key and the keyword options `:seckey`, `:msg`, `:cache`, and `:extra` (all optional; same meaning and binding as before). An unknown option raises `ArgumentError` without echoing option values; a wrong-shaped option value raises `FunctionClauseError`
 - **Breaking:** `Secp256k1.MuSig.pubkey_ec_tweak_add/2` and `Secp256k1.MuSig.pubkey_xonly_tweak_add/2` return `{:ok, tweaked_pubkey, cache}` instead of `{:ok, cache, tweaked_pubkey}`
 - MuSig2 resources created by a different library version are no longer taken over by the native code after a hot code upgrade. Using them raises `ArgumentError` instead of reading memory with the wrong layout. Hot upgrades with live MuSig2 resources across versions are not supported
 - Build the native code in a separate directory per Mix build path and install the NIF into that build's `priv/`, so concurrent compiles (for example ElixirLS and `mix test`, or two `MIX_ENV`s) no longer share or overwrite each other's objects and NIF
-- MuSig2 sessions remember the key aggregation cache and message given to `nonce_process/3`, and secret nonces remember the message and cache given to `nonce_gen/5`. `partial_sign/4` returns `{:error, "keyagg cache does not match session"}`, `{:error, "secnonce was generated for a different keyagg cache"}`, or `{:error, "secnonce was generated for a different message"}` on a mismatch and consumes the nonce; `partial_sig_verify/5` returns `false` for a cache other than the session's. Caches are compared by value
+- Fix concurrent fresh builds (different `MIX_ENV`s, ElixirLS, or consumer projects) deleting the extracted libsecp256k1 source tree another build was compiling against; extraction is serialized by a lock and the published tree is reused
+- Build the NIF with a hardening baseline: stack protector, `_FORTIFY_SOURCE=2` when optimizing and not already set by the compiler, and full RELRO with immediate binding on ELF targets
+- MuSig2 sessions remember the key aggregation cache and message given to `nonce_process/3`, and secret nonces remember the message and cache given to `nonce_gen/2`. `partial_sign/4` returns `{:error, "keyagg cache does not match session"}`, `{:error, "secnonce was generated for a different keyagg cache"}`, or `{:error, "secnonce was generated for a different message"}` on a mismatch and consumes the nonce; `partial_sig_verify/5` returns `false` for a cache other than the session's. Caches are compared by value
 - `Secp256k1.Extrakeys.valid_seckey?/1` and `Secp256k1.Extrakeys.valid_pubkey?/1` return `false` for any term instead of raising `FunctionClauseError` for wrong shapes, matching the `Secp256k1` facade
 - Fail the NIF load instead of aborting the VM when the secp256k1 context cannot be allocated
 - Require Elixir 1.16 or later
 - Keep the required native build flags when `CFLAGS`, `CPPFLAGS`, or `LDFLAGS` are overridden on the `make` command line
 - Stop printing libsecp256k1 illegal-argument and internal-error callback messages to stderr during NIF calls. A call that triggers the illegal-argument callback now raises `ArgumentError`; a call that triggers the internal-error callback returns `{:error, "libsecp256k1 internal error"}`
-- `Secp256k1.MuSig.nonce_gen/5` raises `ArgumentError` when the given secret key is not a valid secret scalar (previously `{:error, "secp256k1_musig_nonce_gen failed"}`) or does not derive the given public key
+- **Breaking:** `Secp256k1.MuSig.nonce_gen/2` raises `ArgumentError` when the given `:seckey` is not a valid secret scalar (previously `{:error, "secp256k1_musig_nonce_gen failed"}`) or does not derive the given public key
 - `Secp256k1.MuSig.partial_sign/4` returns `{:error, "secret key does not match secnonce public key"}` when the secret key does not match the public key the secret nonce was generated for, and consumes the nonce
 - Sign and verify Schnorr messages larger than 65,536 bytes on dirty CPU schedulers
-- `Secp256k1.keypair/1` and `Secp256k1.keypair/2` return `{:error, reason}` instead of `{seckey, {:error, reason}}` when public-key derivation fails
+- **Breaking:** `Secp256k1.keypair/1` and `Secp256k1.keypair/2` return `{:error, reason}` instead of `{seckey, {:error, reason}}` when public-key derivation fails
 - MuSig2 `pubkey_agg/1`, `nonce_agg/1`, and `partial_sig_agg/2` return `{:error, :allocation_failed}` when the list length would overflow the native allocation size
-- Return `{:error, :allocation_failed}` for every native allocation failure instead of `{:error, "enif_alloc_binary failed"}`-style strings
+- **Breaking:** Return `{:error, :allocation_failed}` for every native allocation failure instead of `{:error, "enif_alloc_binary failed"}`-style strings
 - Erase the ECDH shared secret and Schnorr signing keypairs on every native error path
-- Correct typespecs: functions that can return `{:error, reason}` declare it; MuSig2 functions take full compressed or uncompressed public keys (new `t:Secp256k1.full_pubkey/0` type) and exactly 32-byte messages and extra input; `Secp256k1.MuSig.pubkey_get/1` and MuSig2 tweak functions declare compressed public keys; custom Schnorr AUX is exactly 32 bytes
+- Erase the temporary MuSig2 signing session from native stack memory when `Secp256k1.MuSig.nonce_process/3` returns, including on error paths
+- Correct typespecs: functions that can return `{:error, reason}` declare it; MuSig2 functions take full compressed or uncompressed public keys (new `t:Secp256k1.full_pubkey/0` type) and exactly 32-byte messages and extra input; `Secp256k1.MuSig.pubkey_get/1` and MuSig2 tweak functions declare compressed public keys; custom Schnorr AUX is exactly 32 bytes; `Secp256k1.convert_pubkey/2` lists the three supported input/target pairs separately with their exact return types
 
 ## v0.8.0 (2026-08-03)
 
@@ -45,7 +49,7 @@
 - Fix Elixir 1.20 type violations
 - Make sure `ECDSA.valid?/3` and `Schnorr.valid?/3` always return a boolean
 - Fix MuSig2 public nonce, aggregate nonce, and partial signature wire-size serialization to avoid returning uninitialized NIF memory tails
-- Harden MuSig2 invalid-input handling by making key aggregation caches and signing sessions NIF resources, usable by any process on the creating node, instead of raw opaque binaries
+- **Breaking:** Harden MuSig2 invalid-input handling by making key aggregation caches and signing sessions NIF resources, usable by any process on the creating node, instead of raw opaque binaries
 - Make MuSig2 secret nonce consumption concurrency-safe so only one concurrent `partial_sign/4` call can use a secnonce resource
 - Ensure Schnorr signing and x-only pubkey NIF error paths erase keypair stack data before returning
 - Expose libsecp256k1's default hashed ECDH API through `Secp256k1.ecdh/2`
