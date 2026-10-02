@@ -35,8 +35,9 @@ MuSig2 (BIP-327) is a multi-signature scheme that allows multiple parties to agg
 
 ### One signing transcript
 
-The values below belong together. Mixing values from different transcripts
-makes signing or verification fail.
+The values below belong together. The library checks some of them against each
+other (see "What the library checks" below); keeping the rest consistent is your
+responsibility.
 
 | Value               | Produced by        | Must be                                                                                     |
 | ------------------- | ------------------ | ------------------------------------------------------------------------------------------- |
@@ -51,6 +52,27 @@ makes signing or verification fail.
 aggregate key. Agree on an order, for example BIP-327 `KeySort`, which sorts
 33-byte compressed keys lexicographically (`Enum.sort/1`).
 
+### What the library checks
+
+A session remembers the cache and the message given to `nonce_process/3`. A
+secret nonce remembers the pubkey given to `nonce_gen/5` and, when they were
+given, the message and the cache. Caches are compared by value, so a cache
+recomputed from the same keys and tweaks matches.
+
+- `partial_sign/4` returns an error when the cache is not the session's
+  (`"keyagg cache does not match session"`), when the secret nonce was generated
+  for another cache (`"secnonce was generated for a different keyagg cache"`) or
+  another message (`"secnonce was generated for a different message"`), or when
+  the secret key does not derive the nonce's pubkey
+  (`"secret key does not match secnonce public key"`).
+- `partial_sig_verify/5` returns `false` when the cache is not the session's.
+
+Everything else is up to you: each signer's pubkey must be in the aggregated
+list, the aggregate nonce must include every signer's public nonce, and the
+partial signatures given to `partial_sig_agg/2` must belong to the session.
+When `nonce_gen/5` received `nil` for the message or the cache, that value is
+not checked either, so pass both to `nonce_gen/5` whenever you know them.
+
 > **NIF resources:** `keyagg_cache`, `session`, and `secnonce` values are NIF
 > resource references, not binaries. Any process on the same BEAM node can use
 > them. Sending or sharing a `secnonce` reference does not duplicate the nonce,
@@ -63,10 +85,10 @@ aggregate key. Agree on an order, for example BIP-327 `KeySort`, which sorts
 
 > **Secret nonces are one-use:** never reuse MuSig2 secret nonces. Call
 > `nonce_gen/5` fresh for every signing attempt. Reusing a nonce with the same
-> key can leak the secret key. `partial_sign/4` consumes the nonce on the first
-> attempt, including when the secret key does not match the nonce's public key
-> (`{:error, "secret key does not match secnonce public key"}`); later attempts
-> return `{:error, "nonce already used"}`.
+> key can leak the secret key. Every `partial_sign/4` call that returns consumes
+> the nonce, including the errors listed above; later attempts return
+> `{:error, "nonce already used"}`. A call that raises `ArgumentError` (an
+> invalid secret scalar or a resource of the wrong kind) does not consume it.
 
 ## Example: 3-of-3 Signing Session
 
@@ -109,8 +131,9 @@ hex.(agg_xonly_pubkey)
 
 Each participant generates a nonce pair (secret and public) with its own secret
 key and the matching public key from the aggregated list. A secret key that does
-not derive the public key raises `ArgumentError`. Participants exchange public
-nonces.
+not derive the public key raises `ArgumentError`. Passing the message and
+`keyagg_cache` as well lets `partial_sign/4` reject a session for another
+message or cache. Participants exchange public nonces.
 
 ```elixir
 message = :crypto.hash(:sha256, "Joint Account Authorization")
@@ -167,17 +190,23 @@ Enum.map(partial_sigs, hex)
 
 Before aggregating, verify each received partial signature against the
 signer's public nonce and individual public key. A `false` result identifies
-the misbehaving signer.
+the misbehaving signer; abort instead of aggregating.
 
 ```elixir
-Enum.all?(participants_with_sigs, fn p ->
-  MuSig.partial_sig_verify(p.partial_sig, p.pubnonce, p.pubkey, keyagg_cache, session)
-end)
+# IDs of signers whose partial signature does not verify
+invalid_signer_ids =
+  for p <- participants_with_sigs,
+      not MuSig.partial_sig_verify(p.partial_sig, p.pubnonce, p.pubkey, keyagg_cache, session),
+      do: p.id
+
+# Stop here if any partial signature is invalid
+[] = invalid_signer_ids
 ```
 
 ### 7. Signature Aggregation & Verification
 
-Finally, aggregate the partial signatures into the final Schnorr signature.
+Finally, aggregate the verified partial signatures into the final Schnorr
+signature.
 
 ```elixir
 # Combine partial signatures into a standard 64-byte Schnorr signature
@@ -188,7 +217,7 @@ hex.(final_signature)
 
 ```elixir
 # Verify the signature against the aggregated public key
-Secp256k1.schnorr_valid?(final_signature, message, agg_xonly_pubkey)
+true = Secp256k1.schnorr_valid?(final_signature, message, agg_xonly_pubkey)
 ```
 
 ## Security Considerations

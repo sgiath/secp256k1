@@ -3,4 +3,5 @@
 - Do not remove subprocess tests around formerly aborting MuSig probes; they protect BEAM crash boundaries.
 - Subprocess probes must reach native code: call `Secp256k1.NIF.*` directly with the malformed term. `Secp256k1.MuSig` guards raise `FunctionClauseError` before the NIF runs.
 - Tag slow tests (child BEAM subprocesses) `@tag :expensive`. Plain `mix test` excludes them; `mix check` runs them via `mix test --include expensive`.
-- Do not inline DER/vector parsing into individual tests. Keep shared parsing in `support/`.
+- Do not inline DER/vector parsing into individual tests. Keep shared parsing in `support/` (`support/vectors.ex` loads JSON vectors with Jason, a dev/test dependency, because Elixir's built-in `JSON` needs 1.18 and the minimum is 1.16).
+- Vector tests exercise only the public API. BIP-327 `sign_verify`, `tweak`, and `sig_agg` vectors run in `secp256k1/musig_vectors_test.exs`; `nonce_gen` and `det_sign` vectors are not bundled because they need injected randomness or raw secret nonces. `vectors/README.md` lists skipped and adapted cases.

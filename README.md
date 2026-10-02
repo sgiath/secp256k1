@@ -48,7 +48,7 @@ xcode-select --install
 
 ### Elixir Dependency
 
-Add to your `mix.exs`:
+Requires Elixir 1.16 or later. Add to your `mix.exs`:
 
 ```elixir
 def deps do

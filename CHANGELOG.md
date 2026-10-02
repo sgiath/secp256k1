@@ -2,7 +2,13 @@
 
 ## Unreleased
 
-- Stop printing libsecp256k1 illegal-argument and internal-error callback messages to stderr. A call that triggers the illegal-argument callback now raises `ArgumentError`; a call that triggers the internal-error callback returns `{:error, "libsecp256k1 internal error"}`
+- **Breaking:** `Secp256k1.MuSig.pubkey_ec_tweak_add/2` and `Secp256k1.MuSig.pubkey_xonly_tweak_add/2` return `{:ok, tweaked_pubkey, cache}` instead of `{:ok, cache, tweaked_pubkey}`
+- MuSig2 sessions remember the key aggregation cache and message given to `nonce_process/3`, and secret nonces remember the message and cache given to `nonce_gen/5`. `partial_sign/4` returns `{:error, "keyagg cache does not match session"}`, `{:error, "secnonce was generated for a different keyagg cache"}`, or `{:error, "secnonce was generated for a different message"}` on a mismatch and consumes the nonce; `partial_sig_verify/5` returns `false` for a cache other than the session's. Caches are compared by value
+- `Secp256k1.Extrakeys.valid_seckey?/1` and `Secp256k1.Extrakeys.valid_pubkey?/1` return `false` for any term instead of raising `FunctionClauseError` for wrong shapes, matching the `Secp256k1` facade
+- Fail the NIF load instead of aborting the VM when the secp256k1 context cannot be allocated
+- Require Elixir 1.16 or later
+- Keep the required native build flags when `CFLAGS`, `CPPFLAGS`, or `LDFLAGS` are overridden on the `make` command line
+- Stop printing libsecp256k1 illegal-argument and internal-error callback messages to stderr during NIF calls. A call that triggers the illegal-argument callback now raises `ArgumentError`; a call that triggers the internal-error callback returns `{:error, "libsecp256k1 internal error"}`
 - `Secp256k1.MuSig.nonce_gen/5` raises `ArgumentError` when the given secret key is not a valid secret scalar (previously `{:error, "secp256k1_musig_nonce_gen failed"}`) or does not derive the given public key
 - `Secp256k1.MuSig.partial_sign/4` returns `{:error, "secret key does not match secnonce public key"}` when the secret key does not match the public key the secret nonce was generated for, and consumes the nonce
 - Sign and verify Schnorr messages larger than 65,536 bytes on dirty CPU schedulers
@@ -37,7 +43,7 @@
 - Fix Elixir 1.20 type violations
 - Make sure `ECDSA.valid?/3` and `Schnorr.valid?/3` always return a boolean
 - Fix MuSig2 public nonce, aggregate nonce, and partial signature wire-size serialization to avoid returning uninitialized NIF memory tails
-- Harden MuSig2 invalid-input handling by making key aggregation caches and signing sessions process-local resources instead of raw opaque binaries
+- Harden MuSig2 invalid-input handling by making key aggregation caches and signing sessions NIF resources, usable by any process on the creating node, instead of raw opaque binaries
 - Make MuSig2 secret nonce consumption concurrency-safe so only one concurrent `partial_sign/4` call can use a secnonce resource
 - Ensure Schnorr signing and x-only pubkey NIF error paths erase keypair stack data before returning
 - Expose libsecp256k1's default hashed ECDH API through `Secp256k1.ecdh/2`
