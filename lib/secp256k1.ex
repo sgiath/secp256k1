@@ -2,8 +2,8 @@ defmodule Secp256k1 do
   @moduledoc """
   This is the unified API for the stable secp256k1 functions this library provides.
 
-  Experimental MuSig2 signing uses process-local resources and intentionally remains outside
-  this facade. See `Secp256k1.MuSig` for its protocol API.
+  Experimental MuSig2 signing uses NIF resources and intentionally remains outside this facade.
+  See `Secp256k1.MuSig` for its protocol API.
 
   ## Examples
 
@@ -49,6 +49,44 @@ defmodule Secp256k1 do
       iex> shared_secret = Secp256k1.ecdh(alice_seckey, bob_pubkey)
       iex> byte_size(shared_secret)
       32
+
+  ## Error contract
+
+  All modules in this library share one error contract:
+
+    * **Wrong shape** - an argument with the wrong type or binary size fails the Elixir guards
+      and raises `FunctionClauseError`. The key predicates `valid_seckey?/1` and
+      `valid_pubkey?/1` return `false` instead.
+    * **Invalid secrets, signatures, and MuSig values** - a correctly sized secret key that is
+      not a valid scalar (zero or not below the curve order) raises `ArgumentError`. So do
+      malformed DER in the accepted 8-72 byte range, compact ECDSA signatures that cannot be
+      parsed by `ecdsa_signature_serialize_der/1` or `ecdsa_signature_normalize/1`, MuSig
+      resources that are stale, of the wrong kind, or created by another NIF library, and MuSig
+      public keys, public nonces, aggregate nonces, or partial signatures that cannot be parsed. A
+      `Secp256k1.MuSig.nonce_gen/5` secret key that does not derive the given public key also
+      raises `ArgumentError`.
+    * **Malformed public keys** - a correctly sized public key that does not encode a curve
+      point returns `{:error, reason}` from `ecdh/2`, `convert_pubkey/2`,
+      `ec_pubkey_tweak_add/2`, and `xonly_pubkey_tweak_add/2` (and their feature-module
+      counterparts).
+    * **Predicates** - `ecdsa_valid?/3`, `schnorr_valid?/3`, `xonly_pubkey_tweak_add_check/4`,
+      `valid_seckey?/1`, and `valid_pubkey?/1` return `false` for correctly sized but invalid
+      signatures, keys, or tweaks. `Secp256k1.MuSig.partial_sig_verify/5` is a MuSig
+      exception: it returns `false` for a partial signature that does not verify but raises
+      `ArgumentError` for unparsable arguments, as listed above.
+    * **Operation failures** - a cryptographic operation that rejects valid-looking input (for
+      example a tweak at or above the curve order, a tweak producing an invalid key, a used
+      MuSig secret nonce, or a `Secp256k1.MuSig.partial_sign/4` secret key that does not match
+      the secret nonce's public key) returns `{:error, reason}` with a binary `reason`
+      describing the failure. A native allocation failure returns `{:error, :allocation_failed}`.
+    * **libsecp256k1 callbacks** - libsecp256k1 reports API misuse through its
+      illegal-argument callback and internal consistency failures through its error callback.
+      This library never prints either message. A call that triggers the illegal-argument
+      callback discards its result and raises `ArgumentError`; a call that triggers the
+      internal-error callback discards its result and returns
+      `{:error, "libsecp256k1 internal error"}`. libsecp256k1 v0.7.1 invokes the
+      internal-error callback only from code paths these bindings do not use, so predicate
+      specs remain `boolean()`.
 
   """
   @moduledoc authors: ["sgiath <secp256k1@sgiath.dev>"]
@@ -101,7 +139,12 @@ defmodule Secp256k1 do
   @type pubkey() :: xonly_pubkey() | compressed_pubkey() | uncompressed_pubkey()
 
   @typedoc """
-  Serialized compressed ECDSA signature is 64 bytes long binary
+  Compressed (33 bytes) or uncompressed (65 bytes) full public key, as opposed to an x-only key
+  """
+  @type full_pubkey() :: compressed_pubkey() | uncompressed_pubkey()
+
+  @typedoc """
+  Compact ECDSA signature (`r || s`) is 64 bytes long binary
   """
   @type ecdsa_sig() :: <<_::512>>
 
@@ -156,8 +199,12 @@ defmodule Secp256k1 do
 
   Output
     - `pubkey` serialization type depends on the type provided
+
+  A correctly sized `seckey` that is not a valid secret scalar raises `ArgumentError`. A native
+  derivation or allocation failure returns `{:error, reason}`.
   """
-  @spec pubkey(seckey :: seckey(), type :: pubkey_type()) :: pubkey()
+  @spec pubkey(seckey :: seckey(), type :: pubkey_type()) ::
+          pubkey() | {:error, binary() | :allocation_failed}
   def pubkey(seckey, :xonly) when is_seckey(seckey) do
     Secp256k1.Extrakeys.xonly_pubkey(seckey)
   end
@@ -181,10 +228,7 @@ defmodule Secp256k1 do
   Returns the converted public key, or `{:error, reason}` when the correctly sized input does not
   encode a valid secp256k1 public key.
   """
-  @spec convert_pubkey(
-          pubkey :: compressed_pubkey() | uncompressed_pubkey(),
-          type :: :compressed | :uncompressed | :xonly
-        ) ::
+  @spec convert_pubkey(pubkey :: full_pubkey(), type :: :compressed | :uncompressed | :xonly) ::
           compressed_pubkey()
           | uncompressed_pubkey()
           | xonly_pubkey()
@@ -219,7 +263,7 @@ defmodule Secp256k1 do
   The output preserves the input serialization format. This is the public-key
   counterpart of `ec_seckey_tweak_add/2` for BIP-32-style public derivation.
   """
-  @spec ec_pubkey_tweak_add(compressed_pubkey() | uncompressed_pubkey(), tweak()) ::
+  @spec ec_pubkey_tweak_add(full_pubkey(), tweak()) ::
           compressed_pubkey()
           | uncompressed_pubkey()
           | {:error, binary() | :allocation_failed}
@@ -283,9 +327,11 @@ defmodule Secp256k1 do
     - `type` (see `pubkey/2`)
 
   Output
-    - 2-tuple with seckey on the first place and pubkey on the second place
+    - 2-tuple with seckey on the first place and pubkey on the second place, or
+      `{:error, reason}` when public-key derivation fails (see `pubkey/2`)
   """
-  @spec keypair(type :: pubkey_type()) :: {seckey(), pubkey()}
+  @spec keypair(type :: pubkey_type()) ::
+          {seckey(), pubkey()} | {:error, binary() | :allocation_failed}
   def keypair(type) when type in [:xonly, :compressed, :uncompressed] do
     keypair(:crypto.strong_rand_bytes(32), type)
   end
@@ -293,12 +339,17 @@ defmodule Secp256k1 do
   @doc """
   Generate new secp256k1 keypair from provided seckey
 
-  For options see `pubkey/2`
+  For options and errors see `pubkey/2`. Returns `{:error, reason}` instead of a keypair when
+  public-key derivation fails.
   """
-  @spec keypair(seckey :: seckey(), type :: pubkey_type()) :: {seckey(), pubkey()}
+  @spec keypair(seckey :: seckey(), type :: pubkey_type()) ::
+          {seckey(), pubkey()} | {:error, binary() | :allocation_failed}
   def keypair(seckey, type)
       when is_seckey(seckey) and type in [:xonly, :compressed, :uncompressed] do
-    {seckey, Secp256k1.pubkey(seckey, type)}
+    case pubkey(seckey, type) do
+      {:error, _reason} = error -> error
+      pubkey -> {seckey, pubkey}
+    end
   end
 
   @doc """
@@ -309,14 +360,15 @@ defmodule Secp256k1 do
     - `pubkey` compressed or uncompressed secp256k1 public key
 
   Output
-    - `shared_secret` 32 byte binary
+    - `shared_secret` 32 byte binary, or `{:error, reason}` when `pubkey` does not encode a
+      valid secp256k1 public key
 
   This wraps libsecp256k1's ECDH module. It returns the upstream library's
   default hashed ECDH output, currently SHA256 over the compressed shared point.
   For generic raw ECDH, use `:crypto.compute_key/4`.
   """
-  @spec ecdh(seckey :: seckey(), pubkey :: compressed_pubkey() | uncompressed_pubkey()) ::
-          shared_secret()
+  @spec ecdh(seckey :: seckey(), pubkey :: full_pubkey()) ::
+          shared_secret() | {:error, binary() | :allocation_failed}
   def ecdh(seckey, pubkey)
       when is_seckey(seckey) and (is_compressed_pubkey(pubkey) or is_uncompressed_pubkey(pubkey)) do
     Secp256k1.ECDH.ecdh(seckey, pubkey)
@@ -330,9 +382,10 @@ defmodule Secp256k1 do
     - `seckey` 32 byte long binary
 
   Output
-    - `signature` ECDSA signature serialized in compressed format (64 byte binary)
+    - `signature` ECDSA signature serialized in compact `r || s` format (64 byte binary)
   """
-  @spec ecdsa_sign(msg_hash :: hash(), seckey :: seckey()) :: ecdsa_sig()
+  @spec ecdsa_sign(msg_hash :: hash(), seckey :: seckey()) ::
+          ecdsa_sig() | {:error, binary() | :allocation_failed}
   def ecdsa_sign(msg_hash, seckey) when is_hash(msg_hash) and is_seckey(seckey) do
     Secp256k1.ECDSA.sign(msg_hash, seckey)
   end
@@ -387,11 +440,8 @@ defmodule Secp256k1 do
     - `msg_hash` 32 byte long message hash that was signed
     - `pubkey` compressed (33-byte) or uncompressed (65-byte) public key
   """
-  @spec ecdsa_valid?(
-          signature :: ecdsa_sig(),
-          msg_hash :: hash(),
-          pubkey :: compressed_pubkey() | uncompressed_pubkey()
-        ) :: boolean()
+  @spec ecdsa_valid?(signature :: ecdsa_sig(), msg_hash :: hash(), pubkey :: full_pubkey()) ::
+          boolean()
   def ecdsa_valid?(signature, msg_hash, pubkey)
       when is_ecdsa_sig(signature) and is_hash(msg_hash) and
              (is_compressed_pubkey(pubkey) or is_uncompressed_pubkey(pubkey)) do
@@ -402,16 +452,19 @@ defmodule Secp256k1 do
   Calculate Schnorr signature according to BIP 340
 
   Inputs
-    - `message` can accept arbitrary long binary but only 32 byte long hash is the only option
-      strictly according to specification
+    - `message` binary of any length. BIP-340 signs arbitrary-length messages; sign exactly the
+      bytes your protocol specifies. Bitcoin Taproot and Nostr, for example, sign a 32-byte
+      hash. Messages larger than 65_536 bytes are signed on a dirty CPU scheduler.
     - `seckey` 32 byte long binary
 
   Output
-    - `signature` Schnorr signature is 64 byte long binary
+    - `signature` Schnorr signature is 64 byte long binary, or `{:error, reason}` when signing
+      fails
 
   _Note:_ automatic random nonce is added to every run so generated signature is not deterministic
   """
-  @spec schnorr_sign(message :: binary(), seckey :: seckey()) :: schnorr_sig()
+  @spec schnorr_sign(message :: binary(), seckey :: seckey()) ::
+          schnorr_sig() | {:error, binary() | :allocation_failed}
   def schnorr_sign(message, seckey) when is_binary(message) and is_seckey(seckey) do
     Secp256k1.Schnorr.sign(message, seckey)
   end
@@ -421,7 +474,8 @@ defmodule Secp256k1 do
 
   Inputs
     - `signature` 64 byte long binary
-    - `message` arbitrary long binary
+    - `message` the exact signed binary, of any length. Messages larger than 65_536 bytes are
+      verified on a dirty CPU scheduler.
     - `pubkey` xonly pubkey (32 byte long binary)
   """
   @spec schnorr_valid?(

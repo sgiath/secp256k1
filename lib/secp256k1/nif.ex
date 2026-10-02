@@ -20,7 +20,13 @@ defmodule Secp256k1.NIF do
   def schnorr_sign_custom(_message, _seckey, _auxiliary_rand),
     do: :erlang.nif_error({:error, :not_loaded})
 
+  def schnorr_sign_custom_dirty(_message, _seckey, _auxiliary_rand),
+    do: :erlang.nif_error({:error, :not_loaded})
+
   def schnorr_valid?(_signature, _message, _pubkey), do: :erlang.nif_error({:error, :not_loaded})
+
+  def schnorr_valid_dirty?(_signature, _message, _pubkey),
+    do: :erlang.nif_error({:error, :not_loaded})
 
   def ecdh(_seckey, _pubkey), do: :erlang.nif_error({:error, :not_loaded})
   def valid_seckey?(_seckey), do: :erlang.nif_error({:error, :not_loaded})

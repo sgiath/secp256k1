@@ -19,11 +19,11 @@ defmodule Secp256k1.ECDH do
 
   @doc """
   Compute libsecp256k1's default hashed ECDH shared secret.
+
+  Returns `{:error, reason}` when `pubkey` does not encode a valid secp256k1 public key.
   """
-  @spec ecdh(
-          seckey :: Secp256k1.seckey(),
-          pubkey :: Secp256k1.compressed_pubkey() | Secp256k1.uncompressed_pubkey()
-        ) :: Secp256k1.shared_secret()
+  @spec ecdh(seckey :: Secp256k1.seckey(), pubkey :: Secp256k1.full_pubkey()) ::
+          Secp256k1.shared_secret() | {:error, binary() | :allocation_failed}
   def ecdh(seckey, pubkey)
       when is_seckey(seckey) and (is_compressed_pubkey(pubkey) or is_uncompressed_pubkey(pubkey)) do
     Secp256k1.NIF.ecdh(seckey, pubkey)

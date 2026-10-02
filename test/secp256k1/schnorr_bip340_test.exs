@@ -42,11 +42,7 @@ defmodule Secp256k1Test.SchnorrBIP340 do
           unquote(vector.public_key)
         )
 
-      if unquote(vector.verification_result) do
-        assert result == true
-      else
-        assert result == false or match?({:error, _}, result)
-      end
+      assert result == unquote(vector.verification_result)
     end
   end
 end

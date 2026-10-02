@@ -58,10 +58,7 @@ defmodule Secp256k1.Extrakeys do
   uncompressed output. Returns an error for an invalid key or tweak, or when the
   resulting point would be at infinity.
   """
-  @spec ec_pubkey_tweak_add(
-          Secp256k1.compressed_pubkey() | Secp256k1.uncompressed_pubkey(),
-          Secp256k1.tweak()
-        ) ::
+  @spec ec_pubkey_tweak_add(Secp256k1.full_pubkey(), Secp256k1.tweak()) ::
           Secp256k1.compressed_pubkey()
           | Secp256k1.uncompressed_pubkey()
           | {:error, binary() | :allocation_failed}

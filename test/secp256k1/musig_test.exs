@@ -75,22 +75,110 @@ defmodule Secp256k1.MuSigTest do
     assert Schnorr.valid?(final_sig, msg, agg_xonly_pubkey)
   end
 
-  test "cache resource supports public key lookup and functional tweaks" do
+  test "EC tweak of the cache matches tweaking the aggregate public key" do
+    signers = signers(2)
+    pubkeys = Enum.map(signers, & &1.pubkey)
+    {:ok, _agg_xonly_pubkey, cache} = MuSig.pubkey_agg(pubkeys)
+
+    agg_pubkey = MuSig.pubkey_get(cache)
+    tweak = :crypto.hash(:sha256, "ec tweak")
+
+    assert {:ok, tweaked_cache, tweaked_pubkey} = MuSig.pubkey_ec_tweak_add(cache, tweak)
+    assert tweaked_pubkey == Secp256k1.ec_pubkey_tweak_add(agg_pubkey, tweak)
+    assert MuSig.pubkey_get(tweaked_cache) == tweaked_pubkey
+    assert MuSig.pubkey_get(cache) == agg_pubkey
+  end
+
+  test "x-only tweak of the cache matches x-only tweaking of the aggregate key" do
+    signers = signers(2)
+    pubkeys = Enum.map(signers, & &1.pubkey)
+    {:ok, agg_xonly_pubkey, cache} = MuSig.pubkey_agg(pubkeys)
+    agg_pubkey = MuSig.pubkey_get(cache)
+    tweak = :crypto.hash(:sha256, "x-only tweak")
+
+    {:ok, expected_xonly_pubkey, parity} =
+      Secp256k1.xonly_pubkey_tweak_add(agg_xonly_pubkey, tweak)
+
+    assert {:ok, tweaked_cache, tweaked_pubkey} = MuSig.pubkey_xonly_tweak_add(cache, tweak)
+    assert tweaked_pubkey == <<2 + parity, expected_xonly_pubkey::binary>>
+    assert MuSig.pubkey_get(tweaked_cache) == tweaked_pubkey
+    assert MuSig.pubkey_get(cache) == agg_pubkey
+  end
+
+  test "signing with a tweaked cache produces a signature for the tweaked key" do
+    signers = signers(2)
+    msg = :crypto.strong_rand_bytes(32)
+    pubkeys = Enum.map(signers, & &1.pubkey)
+    {:ok, _agg_xonly_pubkey, cache} = MuSig.pubkey_agg(pubkeys)
+    {:ok, cache, _pubkey} = MuSig.pubkey_ec_tweak_add(cache, :crypto.hash(:sha256, "ec tweak"))
+
+    {:ok, cache, <<_prefix, tweaked_xonly_pubkey::binary>>} =
+      MuSig.pubkey_xonly_tweak_add(cache, :crypto.hash(:sha256, "x-only tweak"))
+
+    signature = sign_with(signers, msg, cache)
+
+    assert Schnorr.valid?(signature, msg, tweaked_xonly_pubkey)
+  end
+
+  test "nonce_gen rejects a secret key that does not derive the signer public key" do
+    [signer, other] = signers(2)
+    {:ok, _agg_xonly_pubkey, cache} = MuSig.pubkey_agg([signer.pubkey, other.pubkey])
+    msg = :crypto.strong_rand_bytes(32)
+
+    assert_raise ArgumentError, fn ->
+      MuSig.nonce_gen(other.seckey, signer.pubkey, msg, cache, nil)
+    end
+  end
+
+  test "nonce_gen rejects right-sized invalid secret-key scalars" do
     {_seckey, pubkey} = Secp256k1.keypair(:compressed)
     {:ok, _agg_xonly_pubkey, cache} = MuSig.pubkey_agg([pubkey])
+    msg = :crypto.strong_rand_bytes(32)
+    curve_order = d("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141")
 
-    assert is_reference(cache)
-    assert byte_size(MuSig.pubkey_get(cache)) == 33
+    for seckey <- [<<0::256>>, curve_order] do
+      assert_raise ArgumentError, fn -> MuSig.nonce_gen(seckey, pubkey, msg, cache, nil) end
+    end
+  end
 
-    tweak = :crypto.strong_rand_bytes(32)
-    {:ok, ec_tweaked_cache, ec_tweaked_pubkey} = MuSig.pubkey_ec_tweak_add(cache, tweak)
-    assert is_reference(ec_tweaked_cache)
-    assert byte_size(ec_tweaked_pubkey) == 33
-    assert is_reference(cache)
+  test "partial_sign with a mismatched secret key consumes the nonce" do
+    [signer, other] = signers(2)
+    {:ok, _agg_xonly_pubkey, cache} = MuSig.pubkey_agg([signer.pubkey, other.pubkey])
+    msg = :crypto.strong_rand_bytes(32)
 
-    {:ok, xonly_tweaked_cache, xonly_tweaked_pubkey} = MuSig.pubkey_xonly_tweak_add(cache, tweak)
-    assert is_reference(xonly_tweaked_cache)
-    assert byte_size(xonly_tweaked_pubkey) == 33
+    {:ok, secnonce, pubnonce} = MuSig.nonce_gen(signer.seckey, signer.pubkey, msg, cache, nil)
+    {:ok, _, other_pubnonce} = MuSig.nonce_gen(other.seckey, other.pubkey, msg, cache, nil)
+    aggnonce = MuSig.nonce_agg([pubnonce, other_pubnonce])
+    session = MuSig.nonce_process(aggnonce, msg, cache)
+
+    assert {:error, "secret key does not match secnonce public key"} =
+             MuSig.partial_sign(secnonce, other.seckey, cache, session)
+
+    assert {:error, "nonce already used"} =
+             MuSig.partial_sign(secnonce, signer.seckey, cache, session)
+  end
+
+  test "partial_sig_verify returns false when signature, signer, or session do not match" do
+    [alice, bob] = signers(2)
+    {:ok, _agg_xonly_pubkey, cache} = MuSig.pubkey_agg([alice.pubkey, bob.pubkey])
+    msg = :crypto.strong_rand_bytes(32)
+
+    {:ok, alice_secnonce, alice_nonce} =
+      MuSig.nonce_gen(alice.seckey, alice.pubkey, msg, cache, nil)
+
+    {:ok, bob_secnonce, bob_nonce} = MuSig.nonce_gen(bob.seckey, bob.pubkey, msg, cache, nil)
+    aggnonce = MuSig.nonce_agg([alice_nonce, bob_nonce])
+    session = MuSig.nonce_process(aggnonce, msg, cache)
+    other_msg_session = MuSig.nonce_process(aggnonce, :crypto.hash(:sha256, msg), cache)
+    alice_sig = MuSig.partial_sign(alice_secnonce, alice.seckey, cache, session)
+    bob_sig = MuSig.partial_sign(bob_secnonce, bob.seckey, cache, session)
+    verify = &MuSig.partial_sig_verify(&1, &2, &3, cache, &4)
+
+    assert verify.(alice_sig, alice_nonce, alice.pubkey, session)
+    assert verify.(bob_sig, alice_nonce, alice.pubkey, session) == false
+    assert verify.(alice_sig, alice_nonce, bob.pubkey, session) == false
+    assert verify.(alice_sig, bob_nonce, alice.pubkey, session) == false
+    assert verify.(alice_sig, alice_nonce, alice.pubkey, other_msg_session) == false
   end
 
   test "nonce reuse protection" do
@@ -264,10 +352,7 @@ defmodule Secp256k1.MuSigTest do
 
   @tag :expensive
   test "formerly aborting malformed cache probes only raise in child BEAM" do
-    assert_subprocess_argument_error("""
-    alias Secp256k1.MuSig
-    MuSig.pubkey_get(<<0::197*8>>)
-    """)
+    assert_subprocess_argument_error("Secp256k1.NIF.musig_pubkey_get(<<0::197*8>>)")
 
     assert_subprocess_argument_error("""
     alias Secp256k1.MuSig
@@ -276,15 +361,13 @@ defmodule Secp256k1.MuSigTest do
     msg = <<1::256>>
     {:ok, _secnonce, pubnonce} = MuSig.nonce_gen(seckey, pubkey, msg, cache, nil)
     aggnonce = MuSig.nonce_agg([pubnonce])
-    MuSig.nonce_process(aggnonce, msg, <<0::197*8>>)
+    Secp256k1.NIF.musig_nonce_process(aggnonce, msg, <<0::197*8>>)
     """)
 
     assert_subprocess_argument_error("""
-    alias Secp256k1.MuSig
     {seckey, pubkey} = Secp256k1.keypair(:compressed)
-    {:ok, _agg_xonly_pubkey, cache} = MuSig.pubkey_agg([pubkey])
-    msg = <<1::256>>
-    MuSig.nonce_gen(seckey, nil, msg, cache, nil)
+    {:ok, _agg_xonly_pubkey, cache} = Secp256k1.MuSig.pubkey_agg([pubkey])
+    Secp256k1.NIF.musig_nonce_gen(seckey, nil, <<1::256>>, cache, nil)
     """)
   end
 
@@ -299,8 +382,38 @@ defmodule Secp256k1.MuSigTest do
     aggnonce = MuSig.nonce_agg([pubnonce])
     session = MuSig.nonce_process(aggnonce, msg, cache)
     partial_sig = MuSig.partial_sign(secnonce, seckey, cache, session)
-    MuSig.partial_sig_agg(<<0::133*8>>, [partial_sig])
+    Secp256k1.NIF.musig_partial_sig_agg(<<0::133*8>>, [partial_sig])
     """)
+  end
+
+  defp signers(count) do
+    for _ <- 1..count do
+      {seckey, pubkey} = Secp256k1.keypair(:compressed)
+      %{seckey: seckey, pubkey: pubkey}
+    end
+  end
+
+  defp sign_with(signers, msg, cache) do
+    nonces =
+      Enum.map(signers, fn signer ->
+        {:ok, secnonce, pubnonce} = MuSig.nonce_gen(signer.seckey, signer.pubkey, msg, cache, nil)
+        {secnonce, pubnonce}
+      end)
+
+    session =
+      nonces
+      |> Enum.map(fn {_secnonce, pubnonce} -> pubnonce end)
+      |> MuSig.nonce_agg()
+      |> MuSig.nonce_process(msg, cache)
+
+    partial_sigs =
+      Enum.zip_with(signers, nonces, fn signer, {secnonce, pubnonce} ->
+        partial_sig = MuSig.partial_sign(secnonce, signer.seckey, cache, session)
+        assert MuSig.partial_sig_verify(partial_sig, pubnonce, signer.pubkey, cache, session)
+        partial_sig
+      end)
+
+    MuSig.partial_sig_agg(session, partial_sigs)
   end
 
   defp signing_state do

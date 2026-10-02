@@ -1,28 +1,33 @@
 #include "utils.h"
 
-#include <stdio.h>
 #include <string.h>
 
 #if defined(_MSC_VER)
 #include <Windows.h>
+#define SECP256K1_NIF_THREAD_LOCAL __declspec(thread)
+#else
+#define SECP256K1_NIF_THREAD_LOCAL __thread
 #endif
 
 #include "random.h"
 
+static SECP256K1_NIF_THREAD_LOCAL int illegal_fired;
+static SECP256K1_NIF_THREAD_LOCAL int internal_fired;
+
 static void
 secp256k1_nif_illegal_callback(const char *message, void *data)
 {
+  (void)message;
   (void)data;
-  fprintf(stderr, "[libsecp256k1 NIF] illegal argument: %s\n", message ? message : "(null)");
-  fflush(stderr);
+  illegal_fired = 1;
 }
 
 static void
 secp256k1_nif_error_callback(const char *message, void *data)
 {
+  (void)message;
   (void)data;
-  fprintf(stderr, "[libsecp256k1 NIF] internal error: %s\n", message ? message : "(null)");
-  fflush(stderr);
+  internal_fired = 1;
 }
 
 static void
@@ -30,6 +35,25 @@ install_context_callbacks(secp256k1_context *context)
 {
   secp256k1_context_set_illegal_callback(context, secp256k1_nif_illegal_callback, NULL);
   secp256k1_context_set_error_callback(context, secp256k1_nif_error_callback, NULL);
+}
+
+void
+callback_flags_clear(void)
+{
+  illegal_fired = 0;
+  internal_fired = 0;
+}
+
+int
+callback_illegal_fired(void)
+{
+  return illegal_fired;
+}
+
+int
+callback_internal_fired(void)
+{
+  return internal_fired;
 }
 
 void
@@ -110,18 +134,22 @@ secp256k1_nif_state_destroy(secp256k1_nif_state *state)
 }
 
 ERL_NIF_TERM
+allocation_failed(ErlNifEnv *env)
+{
+  return enif_make_tuple2(env,
+    enif_make_atom(env, "error"),
+    enif_make_atom(env, "allocation_failed")
+  );
+}
+
+ERL_NIF_TERM
 error_result(ErlNifEnv *env, const char *error_msg)
 {
-  ErlNifBinary bin;
-  size_t len = strlen(error_msg);
+  ERL_NIF_TERM reason;
 
-  if (!enif_alloc_binary(len, &bin)) {
-    return enif_make_tuple2(env,
-      enif_make_atom(env, "error"),
-      enif_make_atom(env, "allocation_failed")
-    );
+  if (!make_binary(env, (const unsigned char *)error_msg, strlen(error_msg), &reason)) {
+    return allocation_failed(env);
   }
-  memcpy(bin.data, error_msg, len);
 
-  return enif_make_tuple2(env, enif_make_atom(env, "error"), enif_make_binary(env, &bin));
+  return enif_make_tuple2(env, enif_make_atom(env, "error"), reason);
 }

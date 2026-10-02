@@ -103,7 +103,7 @@ secp256k1_nif_xonly_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 
   if (!make_binary(env, serialized_pubkey, sizeof(serialized_pubkey), &result))
   {
-    result = error_result(env, "enif_alloc_binary failed");
+    result = allocation_failed(env);
   }
 
 cleanup:
@@ -144,7 +144,7 @@ secp256k1_nif_xonly_pubkey_from_pubkey(ErlNifEnv *env, int argc, const ERL_NIF_T
 
   if (!make_binary(env, serialized_pubkey, sizeof(serialized_pubkey), &result))
   {
-    return error_result(env, "enif_alloc_binary failed");
+    return allocation_failed(env);
   }
 
   return result;
@@ -179,7 +179,7 @@ secp256k1_nif_ec_seckey_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TERM a
   if (!make_binary(env, tweaked_seckey, sizeof(tweaked_seckey), &result))
   {
     secure_erase(tweaked_seckey, sizeof(tweaked_seckey));
-    return error_result(env, "enif_alloc_binary failed");
+    return allocation_failed(env);
   }
 
   secure_erase(tweaked_seckey, sizeof(tweaked_seckey));
@@ -232,7 +232,7 @@ secp256k1_nif_ec_pubkey_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TERM a
 
   if (!make_binary(env, serialized_pubkey, serialized_size, &result))
   {
-    return error_result(env, "enif_alloc_binary failed");
+    return allocation_failed(env);
   }
 
   return result;
@@ -278,7 +278,7 @@ secp256k1_nif_xonly_seckey_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TER
 
   if (!make_binary(env, tweaked_seckey, sizeof(tweaked_seckey), &result))
   {
-    result = error_result(env, "enif_alloc_binary failed");
+    result = allocation_failed(env);
   }
 
 cleanup_secrets:
@@ -332,7 +332,7 @@ secp256k1_nif_xonly_pubkey_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TER
 
   if (!make_binary(env, serialized_pubkey, sizeof(serialized_pubkey), &pubkey_term))
   {
-    return error_result(env, "enif_alloc_binary failed");
+    return allocation_failed(env);
   }
 
   return enif_make_tuple3(

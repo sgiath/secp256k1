@@ -1,27 +1,8 @@
-#include "utils.h"
+#include "musig.h"
 #include "nifs.h"
-#include "random.h"
 
-#include <secp256k1_musig.h>
+#include <stdint.h>
 #include <string.h>
-
-#define MUSIG_PUBNONCE_SERIALIZED_SIZE 66
-#define MUSIG_AGGNONCE_SERIALIZED_SIZE 66
-#define MUSIG_PARTIAL_SIG_SERIALIZED_SIZE 32
-
-typedef struct {
-  secp256k1_musig_keyagg_cache cache;
-} keyagg_cache_wrapper;
-
-typedef struct {
-  secp256k1_musig_session session;
-} session_wrapper;
-
-typedef struct {
-  secp256k1_musig_secnonce nonce;
-  ErlNifMutex *mutex;
-  int used;
-} secnonce_wrapper;
 
 static void
 destruct_keyagg_cache(ErlNifEnv *env, void *obj)
@@ -40,7 +21,7 @@ destruct_session(ErlNifEnv *env, void *obj)
 static void
 destruct_secnonce(ErlNifEnv *env, void *obj)
 {
-  secnonce_wrapper *wrapper = (secnonce_wrapper *)obj;
+  secnonce_wrapper *wrapper = obj;
 
   (void)env;
 
@@ -52,7 +33,30 @@ destruct_secnonce(ErlNifEnv *env, void *obj)
   secure_erase(obj, sizeof(secnonce_wrapper));
 }
 
-static int
+static ErlNifResourceType *
+open_resource_type(ErlNifEnv *env, const char *name, ErlNifResourceDtor *destructor)
+{
+  return enif_open_resource_type(
+    env,
+    NULL,
+    name,
+    destructor,
+    ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER,
+    NULL
+  );
+}
+
+int
+musig_open_resource_types(ErlNifEnv *env, secp256k1_nif_state *state)
+{
+  state->keyagg_cache_rt = open_resource_type(env, "keyagg_cache_resource", destruct_keyagg_cache);
+  state->session_rt = open_resource_type(env, "session_resource", destruct_session);
+  state->secnonce_rt = open_resource_type(env, "secnonce_resource", destruct_secnonce);
+
+  return state->keyagg_cache_rt && state->session_rt && state->secnonce_rt;
+}
+
+int
 make_keyagg_cache_resource(
   ErlNifEnv *env,
   const secp256k1_musig_keyagg_cache *cache,
@@ -72,7 +76,7 @@ make_keyagg_cache_resource(
   return 1;
 }
 
-static int
+int
 make_session_resource(
   ErlNifEnv *env,
   const secp256k1_musig_session *session,
@@ -92,649 +96,76 @@ make_session_resource(
   return 1;
 }
 
-static int
-is_nil(ErlNifEnv *env, ERL_NIF_TERM term)
-{
-  return enif_is_identical(term, enif_make_atom(env, "nil"));
-}
-
 int
-musig_open_resource_types(ErlNifEnv *env, secp256k1_nif_state *state)
+make_secnonce_resource(
+  ErlNifEnv *env,
+  const secp256k1_musig_secnonce *nonce,
+  const secp256k1_pubkey *pubkey,
+  ERL_NIF_TERM *term
+)
 {
-  state->keyagg_cache_rt = enif_open_resource_type(
-    env,
-    NULL,
-    "keyagg_cache_resource",
-    destruct_keyagg_cache,
-    ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER,
-    NULL
-  );
-  if (!state->keyagg_cache_rt) {
+  secnonce_wrapper *wrapper =
+    enif_alloc_resource(nif_state(env)->secnonce_rt, sizeof(secnonce_wrapper));
+
+  if (!wrapper) {
     return 0;
   }
 
-  state->session_rt = enif_open_resource_type(
-    env,
-    NULL,
-    "session_resource",
-    destruct_session,
-    ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER,
-    NULL
-  );
-  if (!state->session_rt) {
+  wrapper->used = 0;
+  wrapper->mutex = enif_mutex_create("secp256k1_musig_secnonce");
+  if (!wrapper->mutex) {
+    enif_release_resource(wrapper);
     return 0;
   }
 
-  state->secnonce_rt = enif_open_resource_type(
-    env,
-    NULL,
-    "secnonce_resource",
-    destruct_secnonce,
-    ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER,
-    NULL
-  );
-  if (!state->secnonce_rt) {
-    return 0;
-  }
-
+  memcpy(&wrapper->nonce, nonce, sizeof(wrapper->nonce));
+  memcpy(&wrapper->pubkey, pubkey, sizeof(wrapper->pubkey));
+  *term = enif_make_resource(env, wrapper);
+  enif_release_resource(wrapper);
   return 1;
 }
 
-ERL_NIF_TERM
-secp256k1_nif_musig_pubkey_agg(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+int
+get_keyagg_cache(ErlNifEnv *env, ERL_NIF_TERM term, keyagg_cache_wrapper **wrapper)
 {
-  secp256k1_context *ctx = nif_ctx(env);
+  void *obj;
 
-  (void)argc;
-
-  ERL_NIF_TERM head, tail, list = argv[0];
-  unsigned int n_pubkeys;
-  secp256k1_pubkey *pubkeys;
-  const secp256k1_pubkey **pubkeys_ptrs;
-  secp256k1_xonly_pubkey agg_pk;
-  secp256k1_musig_keyagg_cache cache;
-  unsigned char serialized_agg_pk[32];
-  ERL_NIF_TERM agg_pk_term;
-  ERL_NIF_TERM cache_term;
-  unsigned int i;
-
-  if (!enif_get_list_length(env, list, &n_pubkeys) || n_pubkeys == 0) {
-    return enif_make_badarg(env);
+  if (!enif_get_resource(env, term, nif_state(env)->keyagg_cache_rt, &obj)) {
+    return 0;
   }
-
-  // Allocate memory for pubkeys and pointers
-  pubkeys = enif_alloc(n_pubkeys * sizeof(secp256k1_pubkey));
-  pubkeys_ptrs = enif_alloc(n_pubkeys * sizeof(secp256k1_pubkey *));
-  if (!pubkeys || !pubkeys_ptrs) {
-    if (pubkeys) enif_free(pubkeys);
-    if (pubkeys_ptrs) enif_free(pubkeys_ptrs);
-    return error_result(env, "enif_alloc failed");
-  }
-
-  // Parse pubkeys from list
-  for (i = 0; i < n_pubkeys; i++) {
-    ErlNifBinary bin;
-    if (!enif_get_list_cell(env, list, &head, &tail)) {
-      goto bad_arg;
-    }
-    if (!enif_inspect_binary(env, head, &bin) ||
-        !secp256k1_ec_pubkey_parse(ctx, &pubkeys[i], bin.data, bin.size)) {
-      goto bad_arg;
-    }
-    pubkeys_ptrs[i] = &pubkeys[i];
-    list = tail;
-  }
-
-  if (!secp256k1_musig_pubkey_agg(ctx, &agg_pk, &cache, pubkeys_ptrs, n_pubkeys)) {
-    enif_free(pubkeys);
-    enif_free(pubkeys_ptrs);
-    return error_result(env, "secp256k1_musig_pubkey_agg failed");
-  }
-
-  enif_free(pubkeys);
-  enif_free(pubkeys_ptrs);
-
-  if (!secp256k1_xonly_pubkey_serialize(ctx, serialized_agg_pk, &agg_pk)) {
-    return error_result(env, "secp256k1_xonly_pubkey_serialize failed");
-  }
-
-  if (!make_binary(env, serialized_agg_pk, sizeof(serialized_agg_pk), &agg_pk_term)) {
-    return enif_make_tuple2(env,
-      enif_make_atom(env, "error"),
-      enif_make_atom(env, "allocation_failed")
-    );
-  }
-
-  if (!make_keyagg_cache_resource(env, &cache, &cache_term)) {
-    return error_result(env, "enif_alloc_resource failed");
-  }
-
-  return enif_make_tuple3(env,
-    enif_make_atom(env, "ok"),
-    agg_pk_term,
-    cache_term
-  );
-
-bad_arg:
-  enif_free(pubkeys);
-  enif_free(pubkeys_ptrs);
-  return enif_make_badarg(env);
+  *wrapper = obj;
+  return 1;
 }
 
-ERL_NIF_TERM
-secp256k1_nif_musig_pubkey_get(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+int
+get_session(ErlNifEnv *env, ERL_NIF_TERM term, session_wrapper **wrapper)
 {
-  secp256k1_context *ctx = nif_ctx(env);
+  void *obj;
 
-  (void)argc;
-
-  keyagg_cache_wrapper *cache;
-  secp256k1_pubkey agg_pk;
-  unsigned char serialized_pk[33];
-  size_t len = sizeof(serialized_pk);
-  ERL_NIF_TERM result;
-
-  if (!enif_get_resource(env, argv[0], nif_state(env)->keyagg_cache_rt, (void **)&cache)) {
-    return enif_make_badarg(env);
+  if (!enif_get_resource(env, term, nif_state(env)->session_rt, &obj)) {
+    return 0;
   }
-
-  if (!secp256k1_musig_pubkey_get(ctx, &agg_pk, &cache->cache)) {
-    return error_result(env, "secp256k1_musig_pubkey_get failed");
-  }
-
-  if (!secp256k1_ec_pubkey_serialize(ctx, serialized_pk, &len, &agg_pk, SECP256K1_EC_COMPRESSED)) {
-    return error_result(env, "secp256k1_ec_pubkey_serialize failed");
-  }
-
-  if (!make_binary(env, serialized_pk, len, &result)) {
-    return enif_make_tuple2(env,
-      enif_make_atom(env, "error"),
-      enif_make_atom(env, "allocation_failed")
-    );
-  }
-
-  return result;
+  *wrapper = obj;
+  return 1;
 }
 
-typedef int (*musig_pubkey_tweak_add_fn)(
-  const secp256k1_context *,
-  secp256k1_pubkey *,
-  secp256k1_musig_keyagg_cache *,
-  const unsigned char *
-);
-
-static ERL_NIF_TERM
-musig_pubkey_tweak_add(
-  ErlNifEnv *env,
-  const ERL_NIF_TERM argv[],
-  musig_pubkey_tweak_add_fn tweak_add,
-  const char *tweak_error
-)
+int
+get_secnonce(ErlNifEnv *env, ERL_NIF_TERM term, secnonce_wrapper **wrapper)
 {
-  secp256k1_context *ctx = nif_ctx(env);
-  ErlNifBinary bin_tweak;
-  keyagg_cache_wrapper *cache_wrapper;
-  secp256k1_musig_keyagg_cache cache;
-  secp256k1_pubkey output_pk;
-  unsigned char serialized_pk[33];
-  size_t len = sizeof(serialized_pk);
-  ERL_NIF_TERM cache_term;
-  ERL_NIF_TERM pubkey_term;
+  void *obj;
 
-  if (!enif_get_resource(env, argv[0], nif_state(env)->keyagg_cache_rt, (void **)&cache_wrapper) ||
-      !enif_inspect_binary(env, argv[1], &bin_tweak) || bin_tweak.size != 32) {
-    return enif_make_badarg(env);
+  if (!enif_get_resource(env, term, nif_state(env)->secnonce_rt, &obj)) {
+    return 0;
   }
-  memcpy(&cache, &cache_wrapper->cache, sizeof(cache));
-
-  if (!tweak_add(ctx, &output_pk, &cache, bin_tweak.data)) {
-    return error_result(env, tweak_error);
-  }
-
-  if (!secp256k1_ec_pubkey_serialize(ctx, serialized_pk, &len, &output_pk, SECP256K1_EC_COMPRESSED)) {
-    return error_result(env, "secp256k1_ec_pubkey_serialize failed");
-  }
-
-  if (!make_binary(env, serialized_pk, len, &pubkey_term)) {
-    return enif_make_tuple2(env,
-      enif_make_atom(env, "error"),
-      enif_make_atom(env, "allocation_failed")
-    );
-  }
-
-  if (!make_keyagg_cache_resource(env, &cache, &cache_term)) {
-    return error_result(env, "enif_alloc_resource failed");
-  }
-
-  return enif_make_tuple3(env, enif_make_atom(env, "ok"), cache_term, pubkey_term);
+  *wrapper = obj;
+  return 1;
 }
 
-ERL_NIF_TERM
-secp256k1_nif_musig_pubkey_ec_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+void *
+musig_alloc_array(unsigned int count, size_t size)
 {
-  (void)argc;
-  return musig_pubkey_tweak_add(
-    env,
-    argv,
-    secp256k1_musig_pubkey_ec_tweak_add,
-    "secp256k1_musig_pubkey_ec_tweak_add failed"
-  );
-}
-
-ERL_NIF_TERM
-secp256k1_nif_musig_pubkey_xonly_tweak_add(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
-{
-  (void)argc;
-  return musig_pubkey_tweak_add(
-    env,
-    argv,
-    secp256k1_musig_pubkey_xonly_tweak_add,
-    "secp256k1_musig_pubkey_xonly_tweak_add failed"
-  );
-}
-
-ERL_NIF_TERM
-secp256k1_nif_musig_nonce_gen(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
-{
-  secp256k1_context *ctx = nif_ctx(env);
-
-  (void)argc;
-
-  ErlNifBinary bin_seckey, bin_pubkey, bin_msg, bin_extra;
-  secp256k1_musig_secnonce secnonce;
-  secp256k1_musig_pubnonce pubnonce;
-  unsigned char session_secrand[32];
-  ErlNifBinary bin_pubnonce;
-  secnonce_wrapper *wrapper;
-  ERL_NIF_TERM resource_term;
-
-  const unsigned char *seckey = NULL;
-  secp256k1_pubkey pubkey_struct;
-  const unsigned char *msg = NULL;
-  keyagg_cache_wrapper *cache_wrapper;
-  const secp256k1_musig_keyagg_cache *cache = NULL;
-  const unsigned char *extra = NULL;
-
-  if (!is_nil(env, argv[0])) {
-    if (!enif_inspect_binary(env, argv[0], &bin_seckey)) {
-      return enif_make_badarg(env);
-    }
-    if (bin_seckey.size != 32) return enif_make_badarg(env);
-    seckey = bin_seckey.data;
+  if (count > SIZE_MAX / size) {
+    return NULL;
   }
-
-  if (is_nil(env, argv[1]) ||
-      !enif_inspect_binary(env, argv[1], &bin_pubkey) ||
-      !secp256k1_ec_pubkey_parse(ctx, &pubkey_struct, bin_pubkey.data, bin_pubkey.size)) {
-    return enif_make_badarg(env);
-  }
-
-  if (!is_nil(env, argv[2])) {
-    if (!enif_inspect_binary(env, argv[2], &bin_msg)) {
-      return enif_make_badarg(env);
-    }
-    if (bin_msg.size != 32) return enif_make_badarg(env);
-    msg = bin_msg.data;
-  }
-
-  if (!is_nil(env, argv[3])) {
-    if (!enif_get_resource(env, argv[3], nif_state(env)->keyagg_cache_rt, (void **)&cache_wrapper)) {
-      return enif_make_badarg(env);
-    }
-    cache = &cache_wrapper->cache;
-  }
-
-  if (!is_nil(env, argv[4])) {
-    if (!enif_inspect_binary(env, argv[4], &bin_extra)) {
-      return enif_make_badarg(env);
-    }
-    if (bin_extra.size != 32) return enif_make_badarg(env);
-    extra = bin_extra.data;
-  }
-
-  if (!fill_random(session_secrand, sizeof(session_secrand))) {
-    secure_erase(session_secrand, sizeof(session_secrand));
-    return error_result(env, "RNG failed");
-  }
-
-  if (!secp256k1_musig_nonce_gen(
-      ctx,
-      &secnonce,
-      &pubnonce,
-      session_secrand,
-      seckey,
-      &pubkey_struct,
-      msg,
-      cache,
-      extra
-    )) {
-    secure_erase(session_secrand, sizeof(session_secrand));
-    return error_result(env, "secp256k1_musig_nonce_gen failed");
-  }
-  secure_erase(session_secrand, sizeof(session_secrand));
-
-  if (!enif_alloc_binary(MUSIG_PUBNONCE_SERIALIZED_SIZE, &bin_pubnonce)) {
-    secure_erase(&secnonce, sizeof(secnonce));
-    return enif_make_tuple2(env,
-      enif_make_atom(env, "error"),
-      enif_make_atom(env, "allocation_failed")
-    );
-  }
-
-  if (!secp256k1_musig_pubnonce_serialize(ctx, bin_pubnonce.data, &pubnonce)) {
-    enif_release_binary(&bin_pubnonce);
-    secure_erase(&secnonce, sizeof(secnonce));
-    return error_result(env, "secp256k1_musig_pubnonce_serialize failed");
-  }
-
-  wrapper = enif_alloc_resource(nif_state(env)->secnonce_rt, sizeof(secnonce_wrapper));
-  if (!wrapper) {
-    enif_release_binary(&bin_pubnonce);
-    secure_erase(&secnonce, sizeof(secnonce));
-    return error_result(env, "enif_alloc_resource failed");
-  }
-  memcpy(&wrapper->nonce, &secnonce, sizeof(secnonce));
-  wrapper->mutex = enif_mutex_create("secp256k1_musig_secnonce");
-  wrapper->used = 0;
-  secure_erase(&secnonce, sizeof(secnonce));
-
-  if (!wrapper->mutex) {
-    enif_release_binary(&bin_pubnonce);
-    enif_release_resource(wrapper);
-    return error_result(env, "enif_mutex_create failed");
-  }
-
-  resource_term = enif_make_resource(env, wrapper);
-  enif_release_resource(wrapper);
-
-  return enif_make_tuple3(env,
-    enif_make_atom(env, "ok"),
-    resource_term,
-    enif_make_binary(env, &bin_pubnonce)
-  );
-}
-
-ERL_NIF_TERM
-secp256k1_nif_musig_nonce_agg(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
-{
-  secp256k1_context *ctx = nif_ctx(env);
-
-  (void)argc;
-
-  ERL_NIF_TERM head, tail, list = argv[0];
-  unsigned int n_nonces;
-  secp256k1_musig_pubnonce *nonces;
-  const secp256k1_musig_pubnonce **nonces_ptrs;
-  secp256k1_musig_aggnonce aggnonce;
-  ErlNifBinary bin_aggnonce;
-  unsigned int i;
-
-  if (!enif_get_list_length(env, list, &n_nonces) || n_nonces == 0) {
-    return enif_make_badarg(env);
-  }
-
-  nonces = enif_alloc(n_nonces * sizeof(secp256k1_musig_pubnonce));
-  nonces_ptrs = enif_alloc(n_nonces * sizeof(secp256k1_musig_pubnonce *));
-  if (!nonces || !nonces_ptrs) {
-    if (nonces) enif_free(nonces);
-    if (nonces_ptrs) enif_free(nonces_ptrs);
-    return error_result(env, "enif_alloc failed");
-  }
-
-  for (i = 0; i < n_nonces; i++) {
-    ErlNifBinary bin;
-    if (!enif_get_list_cell(env, list, &head, &tail)) goto bad_arg;
-    if (!enif_inspect_binary(env, head, &bin) ||
-        bin.size != MUSIG_PUBNONCE_SERIALIZED_SIZE ||
-        !secp256k1_musig_pubnonce_parse(ctx, &nonces[i], bin.data)) {
-      goto bad_arg;
-    }
-    nonces_ptrs[i] = &nonces[i];
-    list = tail;
-  }
-
-  if (!secp256k1_musig_nonce_agg(ctx, &aggnonce, nonces_ptrs, n_nonces)) {
-    enif_free(nonces);
-    enif_free(nonces_ptrs);
-    return error_result(env, "secp256k1_musig_nonce_agg failed");
-  }
-
-  enif_free(nonces);
-  enif_free(nonces_ptrs);
-
-  if (!enif_alloc_binary(MUSIG_AGGNONCE_SERIALIZED_SIZE, &bin_aggnonce)) {
-    return enif_make_tuple2(env,
-      enif_make_atom(env, "error"),
-      enif_make_atom(env, "allocation_failed")
-    );
-  }
-  if (!secp256k1_musig_aggnonce_serialize(ctx, bin_aggnonce.data, &aggnonce)) {
-    enif_release_binary(&bin_aggnonce);
-    return error_result(env, "secp256k1_musig_aggnonce_serialize failed");
-  }
-
-  return enif_make_binary(env, &bin_aggnonce);
-
-bad_arg:
-  enif_free(nonces);
-  enif_free(nonces_ptrs);
-  return enif_make_badarg(env);
-}
-
-ERL_NIF_TERM
-secp256k1_nif_musig_nonce_process(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
-{
-  secp256k1_context *ctx = nif_ctx(env);
-
-  (void)argc;
-
-  ErlNifBinary bin_aggnonce, bin_msg;
-  secp256k1_musig_aggnonce aggnonce;
-  keyagg_cache_wrapper *cache;
-  secp256k1_musig_session session;
-  ERL_NIF_TERM session_term;
-
-  if (!enif_inspect_binary(env, argv[0], &bin_aggnonce) ||
-      bin_aggnonce.size != MUSIG_AGGNONCE_SERIALIZED_SIZE ||
-      !secp256k1_musig_aggnonce_parse(ctx, &aggnonce, bin_aggnonce.data)) {
-    return enif_make_badarg(env);
-  }
-  if (!enif_inspect_binary(env, argv[1], &bin_msg) || bin_msg.size != 32) {
-    return enif_make_badarg(env);
-  }
-  if (!enif_get_resource(env, argv[2], nif_state(env)->keyagg_cache_rt, (void **)&cache)) {
-    return enif_make_badarg(env);
-  }
-
-  if (!secp256k1_musig_nonce_process(ctx, &session, &aggnonce, bin_msg.data, &cache->cache)) {
-    return error_result(env, "secp256k1_musig_nonce_process failed");
-  }
-
-  if (!make_session_resource(env, &session, &session_term)) {
-    return error_result(env, "enif_alloc_resource failed");
-  }
-
-  return session_term;
-}
-
-ERL_NIF_TERM
-secp256k1_nif_musig_partial_sign(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
-{
-  secp256k1_context *ctx = nif_ctx(env);
-
-  (void)argc;
-
-  secnonce_wrapper *wrapper;
-  keyagg_cache_wrapper *cache;
-  session_wrapper *session;
-  ErlNifBinary bin_seckey;
-  secp256k1_keypair keypair;
-  secp256k1_musig_partial_sig partial_sig;
-  ErlNifBinary bin_partial_sig;
-
-  if (!enif_get_resource(env, argv[0], nif_state(env)->secnonce_rt, (void **)&wrapper)) {
-    return enif_make_badarg(env);
-  }
-  if (!enif_get_resource(env, argv[2], nif_state(env)->keyagg_cache_rt, (void **)&cache) ||
-      !enif_get_resource(env, argv[3], nif_state(env)->session_rt, (void **)&session)) {
-    return enif_make_badarg(env);
-  }
-
-  if (!enif_inspect_binary(env, argv[1], &bin_seckey) ||
-      bin_seckey.size != 32 ||
-      !secp256k1_keypair_create(ctx, &keypair, bin_seckey.data)) {
-    return enif_make_badarg(env);
-  }
-
-  enif_mutex_lock(wrapper->mutex);
-  if (wrapper->used) {
-    enif_mutex_unlock(wrapper->mutex);
-    secure_erase(&keypair, sizeof(keypair));
-    return error_result(env, "nonce already used");
-  }
-  wrapper->used = 1;
-  enif_mutex_unlock(wrapper->mutex);
-
-  if (!secp256k1_musig_partial_sign(
-      ctx,
-      &partial_sig,
-      &wrapper->nonce,
-      &keypair,
-      &cache->cache,
-      &session->session
-    )) {
-    secure_erase(&keypair, sizeof(keypair));
-    secure_erase(&wrapper->nonce, sizeof(wrapper->nonce));
-    return error_result(env, "secp256k1_musig_partial_sign failed");
-  }
-  secure_erase(&keypair, sizeof(keypair));
-  secure_erase(&wrapper->nonce, sizeof(wrapper->nonce));
-
-  if (!enif_alloc_binary(MUSIG_PARTIAL_SIG_SERIALIZED_SIZE, &bin_partial_sig)) {
-    return enif_make_tuple2(env,
-      enif_make_atom(env, "error"),
-      enif_make_atom(env, "allocation_failed")
-    );
-  }
-  if (!secp256k1_musig_partial_sig_serialize(ctx, bin_partial_sig.data, &partial_sig)) {
-     enif_release_binary(&bin_partial_sig);
-     return error_result(env, "secp256k1_musig_partial_sig_serialize failed");
-  }
-
-  return enif_make_binary(env, &bin_partial_sig);
-}
-
-ERL_NIF_TERM
-secp256k1_nif_musig_partial_sig_verify(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
-{
-  secp256k1_context *ctx = nif_ctx(env);
-
-  (void)argc;
-
-  ErlNifBinary bin_psig, bin_pubnonce, bin_pubkey;
-  secp256k1_musig_partial_sig partial_sig;
-  secp256k1_musig_pubnonce pubnonce;
-  secp256k1_pubkey pubkey;
-  keyagg_cache_wrapper *cache;
-  session_wrapper *session;
-
-  if (!enif_inspect_binary(env, argv[0], &bin_psig) ||
-      bin_psig.size != MUSIG_PARTIAL_SIG_SERIALIZED_SIZE ||
-      !secp256k1_musig_partial_sig_parse(ctx, &partial_sig, bin_psig.data)) {
-    return enif_make_badarg(env);
-  }
-  if (!enif_inspect_binary(env, argv[1], &bin_pubnonce) ||
-      bin_pubnonce.size != MUSIG_PUBNONCE_SERIALIZED_SIZE ||
-      !secp256k1_musig_pubnonce_parse(ctx, &pubnonce, bin_pubnonce.data)) {
-    return enif_make_badarg(env);
-  }
-  if (!enif_inspect_binary(env, argv[2], &bin_pubkey) ||
-      !secp256k1_ec_pubkey_parse(ctx, &pubkey, bin_pubkey.data, bin_pubkey.size)) {
-    return enif_make_badarg(env);
-  }
-  if (!enif_get_resource(env, argv[3], nif_state(env)->keyagg_cache_rt, (void **)&cache) ||
-      !enif_get_resource(env, argv[4], nif_state(env)->session_rt, (void **)&session)) {
-    return enif_make_badarg(env);
-  }
-
-  if (secp256k1_musig_partial_sig_verify(
-      ctx,
-      &partial_sig,
-      &pubnonce,
-      &pubkey,
-      &cache->cache,
-      &session->session
-    )) {
-    return enif_make_atom(env, "true");
-  }
-
-  return enif_make_atom(env, "false");
-}
-
-ERL_NIF_TERM
-secp256k1_nif_musig_partial_sig_agg(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
-{
-  secp256k1_context *ctx = nif_ctx(env);
-
-  (void)argc;
-
-  ERL_NIF_TERM head, tail, list = argv[1];
-  session_wrapper *session;
-  unsigned int n_sigs;
-  secp256k1_musig_partial_sig *sigs;
-  const secp256k1_musig_partial_sig **sigs_ptrs;
-  unsigned char sig64[64];
-  ERL_NIF_TERM result;
-  unsigned int i;
-
-  if (!enif_get_resource(env, argv[0], nif_state(env)->session_rt, (void **)&session)) {
-    return enif_make_badarg(env);
-  }
-
-  if (!enif_get_list_length(env, list, &n_sigs) || n_sigs == 0) {
-    return enif_make_badarg(env);
-  }
-
-  sigs = enif_alloc(n_sigs * sizeof(secp256k1_musig_partial_sig));
-  sigs_ptrs = enif_alloc(n_sigs * sizeof(secp256k1_musig_partial_sig *));
-  if (!sigs || !sigs_ptrs) {
-    if (sigs) enif_free(sigs);
-    if (sigs_ptrs) enif_free(sigs_ptrs);
-    return error_result(env, "enif_alloc failed");
-  }
-
-  for (i = 0; i < n_sigs; i++) {
-    ErlNifBinary bin;
-    if (!enif_get_list_cell(env, list, &head, &tail)) goto bad_arg;
-    if (!enif_inspect_binary(env, head, &bin) ||
-        bin.size != MUSIG_PARTIAL_SIG_SERIALIZED_SIZE ||
-        !secp256k1_musig_partial_sig_parse(ctx, &sigs[i], bin.data)) {
-      goto bad_arg;
-    }
-    sigs_ptrs[i] = &sigs[i];
-    list = tail;
-  }
-
-  if (!secp256k1_musig_partial_sig_agg(ctx, sig64, &session->session, sigs_ptrs, n_sigs)) {
-    enif_free(sigs);
-    enif_free(sigs_ptrs);
-    return error_result(env, "secp256k1_musig_partial_sig_agg failed");
-  }
-
-  enif_free(sigs);
-  enif_free(sigs_ptrs);
-
-  if (!make_binary(env, sig64, sizeof(sig64), &result)) {
-    return enif_make_tuple2(env,
-      enif_make_atom(env, "error"),
-      enif_make_atom(env, "allocation_failed")
-    );
-  }
-
-  return result;
-
-bad_arg:
-  enif_free(sigs);
-  enif_free(sigs_ptrs);
-  return enif_make_badarg(env);
+  return enif_alloc((size_t)count * size);
 }

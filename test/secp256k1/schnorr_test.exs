@@ -42,6 +42,23 @@ defmodule Secp256k1Test.Schnorr do
     refute Schnorr.valid?(sig, msg, p)
   end
 
+  test "signs and verifies messages at and above the dirty-scheduler threshold", %{
+    seckey: seckey,
+    pubkey: pubkey
+  } do
+    for size <- [65_536, 65_537] do
+      message = :binary.copy(<<0xA5>>, size)
+      prefix_size = size - 1
+      <<prefix::binary-size(^prefix_size), last>> = message
+      modified_message = <<prefix::binary, Bitwise.bxor(last, 1)>>
+
+      signature = Schnorr.sign(message, seckey)
+
+      assert Schnorr.valid?(signature, message, pubkey)
+      assert Schnorr.valid?(signature, modified_message, pubkey) == false
+    end
+  end
+
   test "valid? returns false for x-only pubkeys that fail parsing" do
     message = :binary.copy(<<0>>, 32)
     signature = :binary.copy(<<0>>, 64)

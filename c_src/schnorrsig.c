@@ -19,7 +19,6 @@ secp256k1_nif_schnorr_sign32(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]
   secp256k1_keypair keypair;
 
   unsigned char signature[64];
-  unsigned char *finished;
 
   /* load arguments given by Elixir */
   if (!enif_inspect_binary(env, argv[0], &message) ||
@@ -45,9 +44,9 @@ secp256k1_nif_schnorr_sign32(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]
     return enif_make_badarg(env);
   }
 
-  /* create key pair from secret key */
   if (!secp256k1_keypair_create(ctx, &keypair, seckey.data))
   {
+    secure_erase(&keypair, sizeof(keypair));
     return error_result(env, "secp256k1_keypair_create failed");
   }
 
@@ -58,9 +57,10 @@ secp256k1_nif_schnorr_sign32(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]
     goto cleanup;
   }
 
-  /* Convert signature to Erlang binary */
-  finished = enif_make_new_binary(env, sizeof(signature), &result);
-  memcpy(finished, signature, sizeof(signature));
+  if (!make_binary(env, signature, sizeof(signature), &result))
+  {
+    result = allocation_failed(env);
+  }
 
 cleanup:
   secure_erase(&keypair, sizeof(keypair));
@@ -80,7 +80,6 @@ secp256k1_nif_schnorr_sign_custom(ErlNifEnv *env, int argc, const ERL_NIF_TERM a
   secp256k1_keypair keypair;
 
   unsigned char signature[64];
-  unsigned char *finished;
 
   /* load arguments given by Elixir */
   if (!enif_inspect_binary(env, argv[0], &message) ||
@@ -101,9 +100,9 @@ secp256k1_nif_schnorr_sign_custom(ErlNifEnv *env, int argc, const ERL_NIF_TERM a
     return enif_make_badarg(env);
   }
 
-  /* create key pair from secret key */
   if (!secp256k1_keypair_create(ctx, &keypair, seckey.data))
   {
+    secure_erase(&keypair, sizeof(keypair));
     return error_result(env, "secp256k1_keypair_create failed");
   }
 
@@ -117,9 +116,10 @@ secp256k1_nif_schnorr_sign_custom(ErlNifEnv *env, int argc, const ERL_NIF_TERM a
     goto cleanup;
   }
 
-  /* Convert signature to Erlang binary */
-  finished = enif_make_new_binary(env, sizeof(signature), &result);
-  memcpy(finished, signature, sizeof(signature));
+  if (!make_binary(env, signature, sizeof(signature), &result))
+  {
+    result = allocation_failed(env);
+  }
 
 cleanup:
   secure_erase(&keypair, sizeof(keypair));

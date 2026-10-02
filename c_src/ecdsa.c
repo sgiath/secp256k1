@@ -15,7 +15,6 @@ ecdsa_seckey_pubkey(
   ErlNifBinary seckey;
   secp256k1_pubkey pubkey;
   unsigned char serialized_pubkey[65];
-  unsigned char *finished;
   size_t len = serialized_size;
   ERL_NIF_TERM result;
 
@@ -45,8 +44,10 @@ ecdsa_seckey_pubkey(
     return error_result(env, "secp256k1_ec_pubkey_serialize failed");
   }
 
-  finished = enif_make_new_binary(env, serialized_size, &result);
-  memcpy(finished, serialized_pubkey, serialized_size);
+  if (!make_binary(env, serialized_pubkey, len, &result))
+  {
+    return allocation_failed(env);
+  }
   return result;
 }
 
@@ -77,7 +78,6 @@ ecdsa_parse_pubkey(
   ErlNifBinary input;
   secp256k1_pubkey pubkey;
   unsigned char serialized_pubkey[65];
-  unsigned char *finished;
   size_t len = serialized_size;
   ERL_NIF_TERM result;
 
@@ -107,8 +107,10 @@ ecdsa_parse_pubkey(
     return error_result(env, "secp256k1_ec_pubkey_serialize failed");
   }
 
-  finished = enif_make_new_binary(env, serialized_size, &result);
-  memcpy(finished, serialized_pubkey, serialized_size);
+  if (!make_binary(env, serialized_pubkey, len, &result))
+  {
+    return allocation_failed(env);
+  }
   return result;
 }
 
@@ -139,7 +141,6 @@ secp256k1_nif_ecdsa_sign(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   secp256k1_ecdsa_signature sig;
 
   unsigned char serialized_signature[64];
-  unsigned char *finished;
 
   /* load arguments given by Elixir */
   if (!enif_inspect_binary(env, argv[0], &msg_hash) ||
@@ -157,13 +158,7 @@ secp256k1_nif_ecdsa_sign(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     ndata = nonce_data.data;
   }
 
-  /* check expected arguments size */
-  if (!(seckey.size == 32 && secp256k1_ec_seckey_verify(ctx, seckey.data)))
-  {
-    return enif_make_badarg(env);
-  }
-
-  if (msg_hash.size != 32)
+  if (msg_hash.size != 32 || seckey.size != 32 || !secp256k1_ec_seckey_verify(ctx, seckey.data))
   {
     return enif_make_badarg(env);
   }
@@ -187,9 +182,10 @@ secp256k1_nif_ecdsa_sign(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     return error_result(env, "secp256k1_ecdsa_signature_serialize_compact failed");
   }
 
-  /* Convert signature to Erlang binary */
-  finished = enif_make_new_binary(env, sizeof(serialized_signature), &result);
-  memcpy(finished, serialized_signature, sizeof(serialized_signature));
+  if (!make_binary(env, serialized_signature, sizeof(serialized_signature), &result))
+  {
+    return allocation_failed(env);
+  }
   return result;
 }
 
@@ -203,7 +199,6 @@ secp256k1_nif_ecdsa_serialize_der(ErlNifEnv *env, int argc, const ERL_NIF_TERM a
   ErlNifBinary serialized_sig;
   secp256k1_ecdsa_signature sig;
   unsigned char der[72];
-  unsigned char *finished;
   size_t der_len = sizeof(der);
 
   if (!enif_inspect_binary(env, argv[0], &serialized_sig) || serialized_sig.size != 64)
@@ -221,12 +216,10 @@ secp256k1_nif_ecdsa_serialize_der(ErlNifEnv *env, int argc, const ERL_NIF_TERM a
     return error_result(env, "secp256k1_ecdsa_signature_serialize_der failed");
   }
 
-  finished = enif_make_new_binary(env, der_len, &result);
-  if (!finished)
+  if (!make_binary(env, der, der_len, &result))
   {
-    return error_result(env, "enif_make_new_binary failed");
+    return allocation_failed(env);
   }
-  memcpy(finished, der, der_len);
   return result;
 }
 
@@ -240,7 +233,6 @@ secp256k1_nif_ecdsa_parse_der(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
   ErlNifBinary der;
   secp256k1_ecdsa_signature sig;
   unsigned char serialized_sig[64];
-  unsigned char *finished;
 
   if (!enif_inspect_binary(env, argv[0], &der) || der.size < 8 || der.size > 72)
   {
@@ -257,12 +249,10 @@ secp256k1_nif_ecdsa_parse_der(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
     return error_result(env, "secp256k1_ecdsa_signature_serialize_compact failed");
   }
 
-  finished = enif_make_new_binary(env, sizeof(serialized_sig), &result);
-  if (!finished)
+  if (!make_binary(env, serialized_sig, sizeof(serialized_sig), &result))
   {
-    return error_result(env, "enif_make_new_binary failed");
+    return allocation_failed(env);
   }
-  memcpy(finished, serialized_sig, sizeof(serialized_sig));
   return result;
 }
 
@@ -277,7 +267,6 @@ secp256k1_nif_ecdsa_normalize(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
   secp256k1_ecdsa_signature sig;
   secp256k1_ecdsa_signature normalized_sig;
   unsigned char normalized[64];
-  unsigned char *finished;
 
   if (!enif_inspect_binary(env, argv[0], &serialized_sig) || serialized_sig.size != 64)
   {
@@ -296,12 +285,10 @@ secp256k1_nif_ecdsa_normalize(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
     return error_result(env, "secp256k1_ecdsa_signature_serialize_compact failed");
   }
 
-  finished = enif_make_new_binary(env, sizeof(normalized), &result);
-  if (!finished)
+  if (!make_binary(env, normalized, sizeof(normalized), &result))
   {
-    return error_result(env, "enif_make_new_binary failed");
+    return allocation_failed(env);
   }
-  memcpy(finished, normalized, sizeof(normalized));
   return result;
 }
 

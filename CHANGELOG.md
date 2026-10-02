@@ -1,8 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- Stop printing libsecp256k1 illegal-argument and internal-error callback messages to stderr. A call that triggers the illegal-argument callback now raises `ArgumentError`; a call that triggers the internal-error callback returns `{:error, "libsecp256k1 internal error"}`
+- `Secp256k1.MuSig.nonce_gen/5` raises `ArgumentError` when the given secret key is not a valid secret scalar (previously `{:error, "secp256k1_musig_nonce_gen failed"}`) or does not derive the given public key
+- `Secp256k1.MuSig.partial_sign/4` returns `{:error, "secret key does not match secnonce public key"}` when the secret key does not match the public key the secret nonce was generated for, and consumes the nonce
+- Sign and verify Schnorr messages larger than 65,536 bytes on dirty CPU schedulers
+- `Secp256k1.keypair/1` and `Secp256k1.keypair/2` return `{:error, reason}` instead of `{seckey, {:error, reason}}` when public-key derivation fails
+- MuSig2 `pubkey_agg/1`, `nonce_agg/1`, and `partial_sig_agg/2` return `{:error, :allocation_failed}` when the list length would overflow the native allocation size
+- Return `{:error, :allocation_failed}` for every native allocation failure instead of `{:error, "enif_alloc_binary failed"}`-style strings
+- Erase the ECDH shared secret and Schnorr signing keypairs on every native error path
+- Correct typespecs: functions that can return `{:error, reason}` declare it; MuSig2 functions take full compressed or uncompressed public keys (new `t:Secp256k1.full_pubkey/0` type) and exactly 32-byte messages and extra input; `Secp256k1.MuSig.pubkey_get/1` and MuSig2 tweak functions declare compressed public keys; custom Schnorr AUX is exactly 32 bytes
+
 ## v0.8.0 (2026-08-03)
 
-- Ship the upstream libsecp256k1 source as a vendored tarball so user builds no longer need git or autotools
+- Ship the upstream libsecp256k1 source as a vendored tarball so user builds no longer need git or autotools; user builds verify the tarball's SHA256 before extracting it
 - Convert ECDSA signatures between compact and strict DER encodings and normalize high-S signatures for interoperability
 - Add `Secp256k1.valid_seckey?/1` and `Secp256k1.valid_pubkey?/1` for validating externally received keys
 - Convert received compressed public keys to x-only form through `Secp256k1.convert_pubkey/2` without requiring the secret key
@@ -18,7 +30,7 @@
 - Allow `Secp256k1.ECDSA.sign/3` to accept `nil` for deterministic RFC 6979 signatures without additional nonce data
 - Accept compressed and uncompressed public keys in ECDSA signature verification
 - Fix cross-compilation by applying macOS linker flags only to native builds and passing the target host triplet to Autotools ([#2](https://github.com/sgiath/secp256k1/pull/2), thanks [Kentaro Kuribayashi (@kentaro)](https://github.com/kentaro))
-- Pin the fetched libsecp256k1 source to its full commit SHA and reject mismatched checkouts
+- Pin the libsecp256k1 commit SHA during maintainer vendoring (`make vendor`), which rejects checkouts whose commit does not match the verified release tag. User builds do not check the commit; they verify the vendored tarball's SHA256
 
 ## v0.7.2 (2026-06-04)
 

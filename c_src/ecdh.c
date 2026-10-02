@@ -18,7 +18,6 @@ secp256k1_nif_ecdh(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
   secp256k1_pubkey pubkey_parsed;
 
   unsigned char shared_secret[32];
-  unsigned char *finished;
 
   // load arguments
   if (!enif_inspect_binary(env, argv[0], &seckey) ||
@@ -40,12 +39,13 @@ secp256k1_nif_ecdh(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 
   if (!secp256k1_ecdh(ctx, shared_secret, &pubkey_parsed, seckey.data, NULL, NULL))
   {
-    return error_result(env, "secp256k1_ecdh failed");
+    result = error_result(env, "secp256k1_ecdh failed");
+  }
+  else if (!make_binary(env, shared_secret, sizeof(shared_secret), &result))
+  {
+    result = allocation_failed(env);
   }
 
-  /* Convert shared secret to Erlang binary */
-  finished = enif_make_new_binary(env, sizeof(shared_secret), &result);
-  memcpy(finished, shared_secret, sizeof(shared_secret));
   secure_erase(shared_secret, sizeof(shared_secret));
   return result;
 }

@@ -14,8 +14,6 @@
 #error "Couldn't identify the OS"
 #endif
 
-#endif /* SECP256K1_NIF_RANDOM_H */
-
 /* Returns 1 on success, and 0 on failure. */
 static int fill_random(unsigned char *data, size_t size)
 {
@@ -66,3 +64,5 @@ static int fill_random(unsigned char *data, size_t size)
 #endif
     return 0;
 }
+
+#endif /* SECP256K1_NIF_RANDOM_H */

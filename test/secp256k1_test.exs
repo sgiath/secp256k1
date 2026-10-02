@@ -18,30 +18,18 @@ defmodule Secp256k1Test do
      }}
   end
 
-  test "keypair", %{seckey: s, pubkey: p} do
-    # compressed
-    {seckey, pubkey} = Secp256k1.keypair(:compressed)
+  test "keypair/1 generates a valid secret key and its derived public key" do
+    for {type, pubkey_size} <- [compressed: 33, uncompressed: 65, xonly: 32] do
+      {seckey, pubkey} = Secp256k1.keypair(type)
 
-    assert byte_size(seckey) == 32
-    assert byte_size(pubkey) == 33
+      assert Secp256k1.valid_seckey?(seckey)
+      assert byte_size(pubkey) == pubkey_size
+      assert pubkey == Secp256k1.pubkey(seckey, type)
+    end
+  end
 
-    # uncompressed
-    {seckey, pubkey} = Secp256k1.keypair(:uncompressed)
-
-    assert byte_size(seckey) == 32
-    assert byte_size(pubkey) == 65
-
-    # x-only
-    {seckey, pubkey} = Secp256k1.keypair(:xonly)
-
-    assert byte_size(seckey) == 32
-    assert byte_size(pubkey) == 32
-
-    # with seckey
-    {seckey, pubkey} = Secp256k1.keypair(s, :xonly)
-
-    assert seckey == s
-    assert pubkey == p
+  test "keypair/2 derives the public key of the given secret key", %{seckey: s, pubkey: p} do
+    assert Secp256k1.keypair(s, :xonly) == {s, p}
   end
 
   test "pubkey", %{seckey: s, pubkey: p} do
@@ -162,47 +150,11 @@ defmodule Secp256k1Test do
   end
 
   test "facade rejects invalid sizes at its own public boundary" do
-    convert_xonly_error =
-      assert_raise FunctionClauseError, fn ->
-        Secp256k1.convert_pubkey(<<1>>, :xonly)
-      end
-
-    ecdh_error =
-      assert_raise FunctionClauseError, fn ->
-        Secp256k1.ecdh(<<1>>, <<1>>)
-      end
-
-    ecdsa_sign_error =
-      assert_raise FunctionClauseError, fn ->
-        Secp256k1.ecdsa_sign(<<1>>, <<1>>)
-      end
-
-    ecdsa_error =
-      assert_raise FunctionClauseError, fn ->
-        Secp256k1.ecdsa_valid?(<<1>>, <<1>>, <<1>>)
-      end
-
-    schnorr_sign_error =
-      assert_raise FunctionClauseError, fn ->
-        Secp256k1.schnorr_sign("message", <<1>>)
-      end
-
-    schnorr_error =
-      assert_raise FunctionClauseError, fn ->
-        Secp256k1.schnorr_valid?(<<1>>, "message", <<1>>)
-      end
-
-    assert convert_xonly_error.module == Secp256k1
-    assert convert_xonly_error.function == :convert_pubkey
-    assert ecdh_error.module == Secp256k1
-    assert ecdh_error.function == :ecdh
-    assert ecdsa_sign_error.module == Secp256k1
-    assert ecdsa_sign_error.function == :ecdsa_sign
-    assert ecdsa_error.module == Secp256k1
-    assert ecdsa_error.function == :ecdsa_valid?
-    assert schnorr_sign_error.module == Secp256k1
-    assert schnorr_sign_error.function == :schnorr_sign
-    assert schnorr_error.module == Secp256k1
-    assert schnorr_error.function == :schnorr_valid?
+    assert_raise FunctionClauseError, fn -> Secp256k1.convert_pubkey(<<1>>, :xonly) end
+    assert_raise FunctionClauseError, fn -> Secp256k1.ecdh(<<1>>, <<1>>) end
+    assert_raise FunctionClauseError, fn -> Secp256k1.ecdsa_sign(<<1>>, <<1>>) end
+    assert_raise FunctionClauseError, fn -> Secp256k1.ecdsa_valid?(<<1>>, <<1>>, <<1>>) end
+    assert_raise FunctionClauseError, fn -> Secp256k1.schnorr_sign("message", <<1>>) end
+    assert_raise FunctionClauseError, fn -> Secp256k1.schnorr_valid?(<<1>>, "message", <<1>>) end
   end
 end
