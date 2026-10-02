@@ -96,6 +96,9 @@ jobs:
       MIX_ENV: test
       CC: gcc
       SECP256K1_NIF_SANITIZE: "1"
+      # Compiles in the native fault hooks; test_helper.exs then includes the
+      # :fault_injection tests, so they run under ASan and UBSan.
+      SECP256K1_NIF_FAULT_INJECTION: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -118,7 +121,8 @@ jobs:
         run: mix deps.get --only test
 
       # The Makefile's build-configuration fingerprint (c_src/build/<id>/build-config)
-      # includes SECP256K1_NIF_SANITIZE, so any non-sanitized objects are rebuilt.
+      # includes SECP256K1_NIF_SANITIZE and SECP256K1_NIF_FAULT_INJECTION, so any
+      # objects built without them are rebuilt.
       - name: Build sanitized NIF
         run: |
           mix compile
@@ -126,15 +130,63 @@ jobs:
 
       # The BEAM itself is not instrumented, so the ASan runtime must be the first
       # loaded library. The build above runs without the preload; `mix test` finds
-      # the NIF up to date and only loads it.
+      # the NIF up to date and only loads it. `mix test --only` exits non-zero when
+      # no test ran, so the second run fails if the fault-injection tests were
+      # excluded or missing.
       - name: mix test (sanitized NIF)
         run: |
           LD_PRELOAD="$(gcc -print-file-name=libasan.so)"
           export LD_PRELOAD
           mix test --include expensive
+          mix test --only fault_injection
         env:
           ASAN_OPTIONS: detect_leaks=0
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+
+  cross:
+    name: cross-compile (aarch64-linux-gnu)
+    runs-on: ubuntu-24.04
+    # Mirrors a Nerves build: CROSSCOMPILE is the toolchain prefix without the
+    # trailing dash (its basename becomes configure's --host) and CC is the cross
+    # compiler. The host's ERTS headers stand in for the target's; both are LP64.
+    env:
+      MIX_ENV: prod
+      CROSSCOMPILE: /usr/bin/aarch64-linux-gnu
+      CC: aarch64-linux-gnu-gcc
+      SECP256K1_NIF_WERROR: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        with:
+          otp-version: "29"
+          elixir-version: "1.20"
+
+      - name: Install the aarch64 cross toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+
+      - name: Fetch dependencies
+        run: mix deps.get --only prod
+
+      - name: Cross-compile the NIF
+        run: mix compile
+
+      # The NIF must be an aarch64 ELF linked without the native-macOS flags and
+      # carry the hardening baseline (RELRO, immediate binding, stack protector).
+      - name: Check the cross-compiled NIF
+        run: |
+          nif=_build/prod/lib/lib_secp256k1/priv/secp256k1_nif.so
+          file "$nif"
+          file "$nif" | grep -q 'ELF 64-bit LSB shared object, ARM aarch64'
+          if grep -F 'dynamic_lookup' c_src/build/*/build-config; then
+            echo "::error::Darwin-only linker flags were used for a Linux target"
+            exit 1
+          fi
+          readelf -lW "$nif" | grep -q GNU_RELRO
+          readelf -dW "$nif" | grep -q BIND_NOW
+          readelf --dyn-syms -W "$nif" | grep -q __stack_chk_fail
 
   package:
     name: package (hex.build --unpack)
