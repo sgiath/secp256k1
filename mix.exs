@@ -48,7 +48,7 @@ defmodule Secp256k1.MixProject do
       {:elixir_make, "~> 0.10", runtime: false},
 
       # Development
-      {:ex_check, "~> 0.16", only: [:dev], runtime: false},
+      {:ex_check, "~> 0.17", only: [:dev], runtime: false},
       {:credo, "~> 1.7", only: [:dev], runtime: false},
       {:styler, "~> 1.12", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.40", only: [:dev], runtime: false},
