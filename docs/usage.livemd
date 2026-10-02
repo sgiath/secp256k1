@@ -1,10 +1,12 @@
 # Usage Guide
 
 ```elixir
-# Use the local checkout when the notebook runs from this repo, Hex otherwise
+# Use the local checkout when the notebook runs from this library's repo, Hex otherwise
+local_mix = Path.expand("../mix.exs", __DIR__)
+
 lib_secp256k1 =
-  if File.exists?(Path.expand("../mix.exs", __DIR__)) do
-    {:lib_secp256k1, path: Path.expand("..", __DIR__)}
+  if File.exists?(local_mix) and File.read!(local_mix) =~ "app: :lib_secp256k1" do
+    {:lib_secp256k1, path: Path.dirname(local_mix)}
   else
     {:lib_secp256k1, "~> 0.8"}
   end
@@ -48,10 +50,16 @@ The library allows generating secure random secret keys and deriving public keys
 
 You can generate a new random keypair with a specified public key format (`:compressed`, `:uncompressed`, or `:xonly`).
 
+> **Demo secrets:** every secret key and shared secret this notebook generates
+> or displays is a disposable demo value. Never use these keys for real funds,
+> never display real secret keys like this, and do not share a saved notebook
+> or its output while it contains secret values.
+
 ```elixir
 # Generate a keypair with a compressed public key (33 bytes)
 {seckey, pubkey} = Secp256k1.keypair(:compressed)
 
+# Disposable demo key: displaying a real secret key would leak it
 %{seckey: hex.(seckey), pubkey: hex.(pubkey)}
 ```
 
@@ -260,6 +268,7 @@ public key, and returns a 32-byte binary.
 
 shared_secret = Secp256k1.ecdh(alice_seckey, bob_pubkey)
 
+# Disposable demo secret: never display a real shared secret
 hex.(shared_secret)
 ```
 
