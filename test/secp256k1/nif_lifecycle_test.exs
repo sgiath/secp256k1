@@ -2,6 +2,8 @@ defmodule Secp256k1Test.NifLifecycle do
   @moduledoc false
   use Secp256k1Test.Case, async: false
 
+  import Secp256k1Test.MuSigFlow
+
   alias Secp256k1.ECDSA
   alias Secp256k1.MuSig
   alias Secp256k1.Schnorr
@@ -16,23 +18,25 @@ defmodule Secp256k1Test.NifLifecycle do
     expected_compressed_pubkey = MuSig.pubkey_get(cache)
 
     # Live secret nonces and session created before the upgrade, signed with after it.
-    live_flow = start_two_signer_flow(<<3::256>>, <<4::256>>, message)
+    signers = signers(2)
+    {:ok, live_xonly_pubkey, live_cache} = MuSig.pubkey_agg(Enum.map(signers, & &1.pubkey))
+    live_flow = start_signing(signers, message, live_cache)
 
     # A nonce consumed before the upgrade must stay consumed after it.
-    consumed_signer = hd(live_flow.signers)
+    consumed_signer = hd(signers)
 
     {:ok, consumed_secnonce, _pubnonce} =
       MuSig.nonce_gen(consumed_signer.pubkey,
         seckey: consumed_signer.seckey,
         msg: message,
-        cache: live_flow.cache
+        cache: live_cache
       )
 
     assert <<_::binary-size(32)>> =
              MuSig.partial_sign(
                consumed_secnonce,
                consumed_signer.seckey,
-               live_flow.cache,
+               live_cache,
                live_flow.session
              )
 
@@ -56,69 +60,18 @@ defmodule Secp256k1Test.NifLifecycle do
     assert MuSig.partial_sign(
              consumed_secnonce,
              consumed_signer.seckey,
-             live_flow.cache,
+             live_cache,
              live_flow.session
            ) == {:error, "nonce already used"}
 
-    finish_two_signer_flow(live_flow)
+    assert Schnorr.valid?(finish_signing(live_flow), message, live_xonly_pubkey) == true
 
-    <<5::256>>
-    |> start_two_signer_flow(<<6::256>>, message)
-    |> finish_two_signer_flow()
-  end
+    fresh_signers = signers(2)
 
-  defp start_two_signer_flow(first_seckey, second_seckey, message) do
-    signers =
-      Enum.map([first_seckey, second_seckey], fn seckey ->
-        %{seckey: seckey, pubkey: ECDSA.pubkey(seckey)}
-      end)
+    {:ok, fresh_xonly_pubkey, fresh_cache} =
+      MuSig.pubkey_agg(Enum.map(fresh_signers, & &1.pubkey))
 
-    {:ok, aggregate_xonly_pubkey, cache} =
-      signers
-      |> Enum.map(& &1.pubkey)
-      |> MuSig.pubkey_agg()
-
-    signers =
-      Enum.map(signers, fn signer ->
-        {:ok, secnonce, pubnonce} =
-          MuSig.nonce_gen(signer.pubkey, seckey: signer.seckey, msg: message, cache: cache)
-
-        Map.merge(signer, %{secnonce: secnonce, pubnonce: pubnonce})
-      end)
-
-    aggregate_nonce =
-      signers
-      |> Enum.map(& &1.pubnonce)
-      |> MuSig.nonce_agg()
-
-    %{
-      signers: signers,
-      message: message,
-      aggregate_xonly_pubkey: aggregate_xonly_pubkey,
-      cache: cache,
-      session: MuSig.nonce_process(aggregate_nonce, message, cache)
-    }
-  end
-
-  defp finish_two_signer_flow(%{cache: cache, session: session} = flow) do
-    partial_signatures =
-      Enum.map(flow.signers, fn signer ->
-        partial_signature =
-          MuSig.partial_sign(signer.secnonce, signer.seckey, cache, session)
-
-        assert MuSig.partial_sig_verify(
-                 partial_signature,
-                 signer.pubnonce,
-                 signer.pubkey,
-                 cache,
-                 session
-               ) == true
-
-        partial_signature
-      end)
-
-    final_signature = MuSig.partial_sig_agg(session, partial_signatures)
-
-    assert Schnorr.valid?(final_signature, flow.message, flow.aggregate_xonly_pubkey) == true
+    signature = sign_with(fresh_signers, message, fresh_cache)
+    assert Schnorr.valid?(signature, message, fresh_xonly_pubkey) == true
   end
 end

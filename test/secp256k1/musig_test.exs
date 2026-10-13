@@ -7,73 +7,13 @@ defmodule Secp256k1.MuSigTest do
   alias Secp256k1.Schnorr
 
   test "3-of-3 signing flow" do
+    signers = signers(3)
     msg = :crypto.strong_rand_bytes(32)
+    {:ok, agg_xonly_pubkey, cache} = MuSig.pubkey_agg(Enum.map(signers, & &1.pubkey))
 
-    # 1. Generate keys
-    signers =
-      for _ <- 1..3 do
-        {seckey, pubkey} = Secp256k1.keypair(:compressed)
-        %{seckey: seckey, pubkey: pubkey}
-      end
+    signature = sign_with(signers, msg, cache)
 
-    pubkeys = Enum.map(signers, & &1.pubkey)
-
-    # 2. Aggregate public keys
-    {:ok, agg_xonly_pubkey, cache} = MuSig.pubkey_agg(pubkeys)
-    assert byte_size(agg_xonly_pubkey) == 32
-    assert is_reference(cache)
-
-    # 3. Generate nonces
-    # We need to keep the secnonce resource alive
-    signers =
-      Enum.map(signers, fn signer ->
-        {:ok, secnonce, pubnonce} =
-          MuSig.nonce_gen(signer.pubkey, seckey: signer.seckey, msg: msg, cache: cache)
-
-        assert byte_size(pubnonce) == 66
-
-        Map.merge(signer, %{secnonce: secnonce, pubnonce: pubnonce})
-      end)
-
-    pubnonces = Enum.map(signers, & &1.pubnonce)
-
-    # 4. Aggregate nonces
-    aggnonce = MuSig.nonce_agg(pubnonces)
-    assert byte_size(aggnonce) == 66
-
-    # 5. Process nonces (create session)
-    session = MuSig.nonce_process(aggnonce, msg, cache)
-    assert is_reference(session)
-
-    # 6. Partial signing
-    signers =
-      Enum.map(signers, fn signer ->
-        partial_sig =
-          MuSig.partial_sign(signer.secnonce, signer.seckey, cache, session)
-
-        assert byte_size(partial_sig) == 32
-
-        Map.put(signer, :partial_sig, partial_sig)
-      end)
-
-    # 7. Verify partial signatures
-    for signer <- signers do
-      assert MuSig.partial_sig_verify(
-               signer.partial_sig,
-               signer.pubnonce,
-               signer.pubkey,
-               cache,
-               session
-             ) == true
-    end
-
-    # 8. Aggregate signatures
-    partial_sigs = Enum.map(signers, & &1.partial_sig)
-    final_sig = MuSig.partial_sig_agg(session, partial_sigs)
-    assert byte_size(final_sig) == 64
-
-    # 9. Verify final signature
-    assert Schnorr.valid?(final_sig, msg, agg_xonly_pubkey) == true
+    assert Schnorr.valid?(signature, msg, agg_xonly_pubkey) == true
   end
 
   test "EC tweak of the cache matches tweaking the aggregate public key" do
@@ -437,48 +377,62 @@ defmodule Secp256k1.MuSigTest do
     end
   end
 
-  test "opaque MuSig state rejects forged binaries" do
+  test "resource arguments reject references that are not MuSig resources" do
     state = signing_state()
+    forged_resource = make_ref()
+
+    assert_raise ArgumentError, fn -> MuSig.pubkey_get(forged_resource) end
+
+    assert_raise ArgumentError, fn ->
+      MuSig.nonce_process(state.aggnonce, state.msg, forged_resource)
+    end
+
+    assert_raise ArgumentError, fn ->
+      MuSig.partial_sign(forged_resource, state.seckey, state.cache, state.session)
+    end
+  end
+
+  test "guards reject wrong-shaped arguments before native code" do
+    state = signing_state()
+    resource = make_ref()
+    short_scalar = <<0::248>>
+    forged_cache = <<0::197*8>>
+    forged_session = <<0::133*8>>
     tweak = <<1::256>>
 
-    assert_raise FunctionClauseError, fn ->
-      apply(MuSig, :pubkey_get, [<<0::197*8>>])
-    end
-
-    assert_raise FunctionClauseError, fn ->
-      apply(MuSig, :pubkey_ec_tweak_add, [<<0::197*8>>, tweak])
-    end
-
-    assert_raise FunctionClauseError, fn ->
-      apply(MuSig, :pubkey_xonly_tweak_add, [<<0::197*8>>, tweak])
-    end
-
-    assert_raise FunctionClauseError, fn ->
-      apply(MuSig, :nonce_process, [state.aggnonce, state.msg, <<0::197*8>>])
-    end
-
-    assert_raise FunctionClauseError, fn ->
-      apply(MuSig, :partial_sig_verify, [
+    # `apply/3` keeps the compiler from rejecting the deliberately wrong argument types.
+    wrong_shapes = [
+      pubkey_agg: [[]],
+      pubkey_get: [:not_a_reference],
+      pubkey_get: [forged_cache],
+      pubkey_ec_tweak_add: [resource, short_scalar],
+      pubkey_ec_tweak_add: [forged_cache, tweak],
+      pubkey_xonly_tweak_add: [resource, short_scalar],
+      pubkey_xonly_tweak_add: [forged_cache, tweak],
+      nonce_agg: [[]],
+      nonce_process: [state.aggnonce, state.msg, forged_cache],
+      partial_sign: [:not_a_reference, state.seckey, resource, resource],
+      partial_sig_verify: [short_scalar, state.pubnonce, state.pubkey, resource, resource],
+      partial_sig_verify: [
         state.partial_sig,
         state.pubnonce,
         state.pubkey,
-        <<0::197*8>>,
+        forged_cache,
         state.session
-      ])
-    end
-
-    assert_raise FunctionClauseError, fn ->
-      apply(MuSig, :partial_sig_verify, [
+      ],
+      partial_sig_verify: [
         state.partial_sig,
         state.pubnonce,
         state.pubkey,
         state.cache,
-        <<0::133*8>>
-      ])
-    end
+        forged_session
+      ],
+      partial_sig_agg: [resource, []],
+      partial_sig_agg: [forged_session, [state.partial_sig]]
+    ]
 
-    assert_raise FunctionClauseError, fn ->
-      apply(MuSig, :partial_sig_agg, [<<0::133*8>>, [state.partial_sig]])
+    for {function, args} <- wrong_shapes do
+      assert_raise FunctionClauseError, fn -> apply(MuSig, function, args) end
     end
   end
 
@@ -508,25 +462,5 @@ defmodule Secp256k1.MuSigTest do
     {:ok, _agg_xonly_pubkey, cache} = MuSig.pubkey_agg([pubkey])
     {:ok, _pubkey, other_cache} = MuSig.pubkey_ec_tweak_add(cache, :crypto.hash(:sha256, "tweak"))
     %{seckey: seckey, pubkey: pubkey, cache: cache, other_cache: other_cache}
-  end
-
-  defp signing_state do
-    msg = :crypto.strong_rand_bytes(32)
-    {seckey, pubkey} = Secp256k1.keypair(:compressed)
-    {:ok, _, cache} = MuSig.pubkey_agg([pubkey])
-    {:ok, secnonce, pubnonce} = MuSig.nonce_gen(pubkey, seckey: seckey, msg: msg, cache: cache)
-    aggnonce = MuSig.nonce_agg([pubnonce])
-    session = MuSig.nonce_process(aggnonce, msg, cache)
-    partial_sig = MuSig.partial_sign(secnonce, seckey, cache, session)
-
-    %{
-      msg: msg,
-      pubkey: pubkey,
-      cache: cache,
-      pubnonce: pubnonce,
-      aggnonce: aggnonce,
-      session: session,
-      partial_sig: partial_sig
-    }
   end
 end
