@@ -11,34 +11,6 @@ defmodule Secp256k1Test.Property do
   @curve_order 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
   @dirty_message_threshold 65_536
 
-  describe "secret keys" do
-    test "accept 1 and n - 1 and reject 0, n, and 2^256 - 1" do
-      msg_hash = :crypto.hash(:sha256, "scalar boundaries")
-
-      for seckey <- [<<1::256>>, <<@curve_order - 1::256>>] do
-        assert Secp256k1.valid_seckey?(seckey)
-        sig = Secp256k1.ecdsa_sign(msg_hash, seckey)
-        assert Secp256k1.ecdsa_valid?(sig, msg_hash, Secp256k1.pubkey(seckey, :compressed))
-        sig = Secp256k1.schnorr_sign(msg_hash, seckey)
-        assert Secp256k1.schnorr_valid?(sig, msg_hash, Secp256k1.pubkey(seckey, :xonly))
-      end
-
-      generator = Secp256k1.pubkey(<<1::256>>, :compressed)
-
-      for seckey <- [<<0::256>>, <<@curve_order::256>>, :binary.copy(<<255>>, 32)] do
-        refute Secp256k1.valid_seckey?(seckey)
-
-        for type <- [:compressed, :uncompressed, :xonly] do
-          assert_raise ArgumentError, fn -> Secp256k1.pubkey(seckey, type) end
-        end
-
-        assert_raise ArgumentError, fn -> Secp256k1.ecdsa_sign(msg_hash, seckey) end
-        assert_raise ArgumentError, fn -> Secp256k1.schnorr_sign(msg_hash, seckey) end
-        assert_raise ArgumentError, fn -> Secp256k1.ecdh(seckey, generator) end
-      end
-    end
-  end
-
   describe "public-key encodings" do
     property "convert between formats without loss and all parse as valid" do
       check all seckey <- seckey() do

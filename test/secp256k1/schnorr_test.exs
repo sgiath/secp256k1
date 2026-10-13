@@ -74,7 +74,8 @@ defmodule Secp256k1Test.Schnorr do
     aux = :binary.copy(<<0>>, 32)
     curve_order = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
 
-    for seckey <- [<<0::256>>, <<curve_order::256>>] do
+    for seckey <- [<<0::256>>, <<curve_order::256>>, :binary.copy(<<255>>, 32)] do
+      assert_raise ArgumentError, fn -> Schnorr.sign(message_hash, seckey) end
       assert_raise ArgumentError, fn -> Schnorr.sign32(message_hash, seckey, aux) end
       assert_raise ArgumentError, fn -> Schnorr.sign_custom(message, seckey, aux) end
     end
@@ -89,6 +90,7 @@ defmodule Secp256k1Test.Schnorr do
     aux = :binary.copy(<<0>>, 32)
     signature = :binary.copy(<<0>>, 64)
 
+    assert_raise FunctionClauseError, fn -> Schnorr.sign(message, <<1>>) end
     assert_raise FunctionClauseError, fn -> Schnorr.sign32(<<1>>, seckey, aux) end
     assert_raise FunctionClauseError, fn -> Schnorr.sign32(message_hash, <<1>>, aux) end
     assert_raise FunctionClauseError, fn -> Schnorr.sign32(message_hash, seckey, <<1>>) end

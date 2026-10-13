@@ -47,7 +47,7 @@ defmodule Secp256k1Test.ECDSA do
   end
 
   test "public-key derivation rejects right-sized invalid secret scalars" do
-    for seckey <- [<<0::256>>, <<@curve_order::256>>] do
+    for seckey <- [<<0::256>>, <<@curve_order::256>>, :binary.copy(<<255>>, 32)] do
       assert_raise ArgumentError, fn -> ECDSA.pubkey(seckey) end
       assert_raise ArgumentError, fn -> ECDSA.pubkey(seckey, compress: false) end
       assert_raise ArgumentError, fn -> ECDSA.compressed_pubkey(seckey) end
@@ -109,7 +109,7 @@ defmodule Secp256k1Test.ECDSA do
   test "sign rejects right-sized invalid secret scalars" do
     msg_hash = :crypto.hash(:sha256, "hello")
 
-    for seckey <- [<<0::256>>, <<@curve_order::256>>] do
+    for seckey <- [<<0::256>>, <<@curve_order::256>>, :binary.copy(<<255>>, 32)] do
       assert_raise ArgumentError, fn -> ECDSA.sign(msg_hash, seckey) end
       assert_raise ArgumentError, fn -> ECDSA.sign(msg_hash, seckey, nil) end
     end

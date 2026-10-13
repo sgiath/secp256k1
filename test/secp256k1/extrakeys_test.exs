@@ -14,6 +14,8 @@ defmodule Secp256k1Test.Extrakeys do
   @point_two_x d("c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5")
   @point_two_compressed d("02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5")
   @curve_order d("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141")
+  @curve_order_minus_one d("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364140")
+  @max_scalar :binary.copy(<<255>>, 32)
   # An x coordinate above the field prime p, so it encodes no curve point.
   @field_overflow_x :binary.copy(<<255>>, 32)
 
@@ -57,6 +59,29 @@ defmodule Secp256k1Test.Extrakeys do
     end
   end
 
+  test "valid_seckey? accepts exactly the scalars 1 through n - 1" do
+    assert Extrakeys.valid_seckey?(<<1::256>>)
+    assert Extrakeys.valid_seckey?(@curve_order_minus_one)
+
+    for seckey <- [<<0::256>>, @curve_order, @max_scalar] do
+      refute Extrakeys.valid_seckey?(seckey)
+    end
+  end
+
+  test "valid_pubkey? checks that every encoding parses to a curve point" do
+    uncompressed = Secp256k1.pubkey(<<1::256>>, :uncompressed)
+    <<4, coordinates::binary>> = uncompressed
+
+    assert Extrakeys.valid_pubkey?(@generator_x)
+    assert Extrakeys.valid_pubkey?(@generator_compressed)
+    assert Extrakeys.valid_pubkey?(uncompressed)
+
+    # An x coordinate above p, zeroed 33- and 65-byte encodings, and the hybrid prefix 0x06.
+    for pubkey <- [@field_overflow_x, <<0::264>>, <<0::520>>, <<6, coordinates::binary>>] do
+      refute Extrakeys.valid_pubkey?(pubkey)
+    end
+  end
+
   test "converts a compressed public key to x-only form" do
     assert Extrakeys.xonly_pubkey(@generator_compressed) == @generator_x
     assert Extrakeys.xonly_pubkey(@negated_generator_compressed) == @generator_x
@@ -82,7 +107,7 @@ defmodule Secp256k1Test.Extrakeys do
   end
 
   test "rejects scalar tweaks that produce invalid plain keys" do
-    cancelling_tweak = d("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364140")
+    cancelling_tweak = @curve_order_minus_one
 
     assert {:error, _reason} = Extrakeys.ec_seckey_tweak_add(<<1::256>>, cancelling_tweak)
 
@@ -98,7 +123,7 @@ defmodule Secp256k1Test.Extrakeys do
   end
 
   test "rejects right-sized invalid secret scalars" do
-    for seckey <- [<<0::256>>, @curve_order] do
+    for seckey <- [<<0::256>>, @curve_order, @max_scalar] do
       assert_raise ArgumentError, fn -> Extrakeys.xonly_pubkey(seckey) end
       assert_raise ArgumentError, fn -> Extrakeys.ec_seckey_tweak_add(seckey, <<1::256>>) end
       assert_raise ArgumentError, fn -> Extrakeys.xonly_seckey_tweak_add(seckey, <<1::256>>) end

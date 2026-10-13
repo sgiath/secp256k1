@@ -1,6 +1,11 @@
 defmodule Secp256k1Test do
   use Secp256k1Test.Case, async: true
 
+  alias Secp256k1.ECDH
+  alias Secp256k1.ECDSA
+  alias Secp256k1.Extrakeys
+  alias Secp256k1.Schnorr
+
   doctest Secp256k1
 
   @curve_order d("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141")
@@ -46,34 +51,6 @@ defmodule Secp256k1Test do
     assert pubkey == p
   end
 
-  test "valid_seckey?/1 validates the secret-key scalar", %{seckey: seckey} do
-    assert Secp256k1.valid_seckey?(seckey)
-    refute Secp256k1.valid_seckey?(<<0::256>>)
-    refute Secp256k1.valid_seckey?(@curve_order)
-    refute Secp256k1.valid_seckey?(<<1>>)
-    refute Secp256k1.valid_seckey?(:not_a_key)
-  end
-
-  test "valid_pubkey?/1 validates every supported public-key encoding", %{seckey: seckey} do
-    xonly_pubkey = Secp256k1.pubkey(seckey, :xonly)
-    compressed_pubkey = Secp256k1.pubkey(seckey, :compressed)
-    uncompressed_pubkey = Secp256k1.pubkey(seckey, :uncompressed)
-    invalid_xonly_pubkey = :binary.copy(<<255>>, 32)
-    <<_prefix, coordinates::binary>> = Secp256k1.pubkey(<<1::256>>, :uncompressed)
-    hybrid_pubkey = <<6, coordinates::binary>>
-
-    assert Secp256k1.valid_pubkey?(xonly_pubkey)
-    assert Secp256k1.valid_pubkey?(compressed_pubkey)
-    assert Secp256k1.valid_pubkey?(uncompressed_pubkey)
-
-    refute Secp256k1.valid_pubkey?(invalid_xonly_pubkey)
-    refute Secp256k1.valid_pubkey?(<<0::264>>)
-    refute Secp256k1.valid_pubkey?(<<0::520>>)
-    refute Secp256k1.valid_pubkey?(hybrid_pubkey)
-    refute Secp256k1.valid_pubkey?(<<1>>)
-    refute Secp256k1.valid_pubkey?(:not_a_key)
-  end
-
   test "convert_pubkey/2 converts a received compressed public key to x-only", %{
     seckey: seckey,
     pubkey: xonly_pubkey
@@ -99,62 +76,50 @@ defmodule Secp256k1Test do
     assert {:error, _reason} = Secp256k1.convert_pubkey(<<0::520>>, :compressed)
   end
 
-  test "key tweak facade exposes plain and x-only derivation" do
-    seckey = <<1::256>>
-    tweak = <<1::256>>
-    compressed_pubkey = Secp256k1.pubkey(seckey, :compressed)
-    internal_pubkey = Secp256k1.pubkey(seckey, :xonly)
-
-    assert Secp256k1.ec_seckey_tweak_add(seckey, tweak) == <<2::256>>
-
-    assert Secp256k1.ec_pubkey_tweak_add(compressed_pubkey, tweak) ==
-             Secp256k1.pubkey(<<2::256>>, :compressed)
-
-    assert Secp256k1.xonly_seckey_tweak_add(seckey, tweak) == <<2::256>>
-
-    assert {:ok, tweaked_pubkey, parity} =
-             Secp256k1.xonly_pubkey_tweak_add(internal_pubkey, tweak)
-
-    assert Secp256k1.xonly_pubkey_tweak_add_check(tweaked_pubkey, parity, internal_pubkey, tweak)
-  end
-
-  test "ecdsa_valid?/3 accepts compressed and uncompressed public keys" do
-    {seckey, compressed_pubkey} = Secp256k1.keypair(<<1::256>>, :compressed)
-    uncompressed_pubkey = Secp256k1.pubkey(seckey, :uncompressed)
-    msg_hash = :crypto.hash(:sha256, "hello")
-    signature = Secp256k1.ecdsa_sign(msg_hash, seckey)
-
-    assert Secp256k1.ecdsa_valid?(signature, msg_hash, compressed_pubkey)
-    assert Secp256k1.ecdsa_valid?(signature, msg_hash, uncompressed_pubkey)
-  end
-
-  test "ECDSA signature facade converts DER and normalizes high-S" do
-    low_signature =
-      d(
-        "5dbbddda71772d95ce91cd2d14b592cfbc1dd0aabd6a394b6c2d377bbe59d31d14ddda21494a4e221f0824f0b8b924c43fa43c0ad57dccdaa11f81a6bd4582f6"
-      )
-
-    der_signature =
-      d(
-        "304402205dbbddda71772d95ce91cd2d14b592cfbc1dd0aabd6a394b6c2d377bbe59d31d022014ddda21494a4e221f0824f0b8b924c43fa43c0ad57dccdaa11f81a6bd4582f6"
-      )
-
-    <<r::binary-size(32), low_s::unsigned-big-256>> = low_signature
-
-    high_signature =
-      <<r::binary, :binary.decode_unsigned(@curve_order) - low_s::unsigned-big-256>>
-
-    assert Secp256k1.ecdsa_signature_serialize_der(low_signature) == der_signature
-    assert Secp256k1.ecdsa_signature_parse_der(der_signature) == low_signature
-    assert Secp256k1.ecdsa_signature_normalize(high_signature) == low_signature
-  end
-
-  test "facade rejects invalid sizes at its own public boundary" do
+  test "convert_pubkey/2 rejects encodings it cannot convert" do
     assert_raise FunctionClauseError, fn -> Secp256k1.convert_pubkey(<<1>>, :xonly) end
-    assert_raise FunctionClauseError, fn -> Secp256k1.ecdh(<<1>>, <<1>>) end
-    assert_raise FunctionClauseError, fn -> Secp256k1.ecdsa_sign(<<1>>, <<1>>) end
-    assert_raise FunctionClauseError, fn -> Secp256k1.ecdsa_valid?(<<1>>, <<1>>, <<1>>) end
-    assert_raise FunctionClauseError, fn -> Secp256k1.schnorr_sign("message", <<1>>) end
-    assert_raise FunctionClauseError, fn -> Secp256k1.schnorr_valid?(<<1>>, "message", <<1>>) end
+
+    assert_raise FunctionClauseError, fn ->
+      apply(Secp256k1, :convert_pubkey, [<<0::520>>, :xonly])
+    end
+  end
+
+  # Delegates have no logic of their own: each must return what its feature function returns.
+  test "delegates return their feature functions' results" do
+    # The public key of 6 has odd Y, so the plain and x-only tweaks give different results.
+    seckey = <<6::256>>
+    tweak = <<1::256>>
+    msg_hash = :crypto.hash(:sha256, "facade delegates")
+    compressed = Secp256k1.pubkey(seckey, :compressed)
+    xonly = Secp256k1.pubkey(seckey, :xonly)
+    {:ok, tweaked_xonly, parity} = Extrakeys.xonly_pubkey_tweak_add(xonly, tweak)
+    <<r::binary-size(32), s::256>> = ecdsa_sig = ECDSA.sign(msg_hash, seckey, nil)
+    high_s_sig = <<r::binary, :binary.decode_unsigned(@curve_order) - s::256>>
+    schnorr_sig = Schnorr.sign32(msg_hash, seckey, <<0::256>>)
+
+    delegates = [
+      {:valid_seckey?, Extrakeys, :valid_seckey?, [seckey]},
+      {:valid_pubkey?, Extrakeys, :valid_pubkey?, [xonly]},
+      {:ec_seckey_tweak_add, Extrakeys, :ec_seckey_tweak_add, [seckey, tweak]},
+      {:ec_pubkey_tweak_add, Extrakeys, :ec_pubkey_tweak_add, [compressed, tweak]},
+      {:xonly_seckey_tweak_add, Extrakeys, :xonly_seckey_tweak_add, [seckey, tweak]},
+      {:xonly_pubkey_tweak_add, Extrakeys, :xonly_pubkey_tweak_add, [xonly, tweak]},
+      {:xonly_pubkey_tweak_add_check, Extrakeys, :xonly_pubkey_tweak_add_check,
+       [tweaked_xonly, parity, xonly, tweak]},
+      {:ecdh, ECDH, :ecdh, [seckey, Secp256k1.pubkey(<<2::256>>, :compressed)]},
+      {:ecdsa_signature_serialize_der, ECDSA, :serialize_der, [ecdsa_sig]},
+      {:ecdsa_signature_parse_der, ECDSA, :parse_der, [ECDSA.serialize_der(ecdsa_sig)]},
+      {:ecdsa_signature_normalize, ECDSA, :normalize, [high_s_sig]},
+      {:ecdsa_valid?, ECDSA, :valid?, [ecdsa_sig, msg_hash, compressed]},
+      {:schnorr_valid?, Schnorr, :valid?, [schnorr_sig, msg_hash, xonly]}
+    ]
+
+    for {delegate, module, function, args} <- delegates do
+      assert apply(Secp256k1, delegate, args) == apply(module, function, args), "#{delegate}"
+    end
+
+    # The randomized signers cannot be compared by value; their signatures must verify.
+    assert ECDSA.valid?(Secp256k1.ecdsa_sign(msg_hash, seckey), msg_hash, compressed)
+    assert Schnorr.valid?(Secp256k1.schnorr_sign(msg_hash, seckey), msg_hash, xonly)
   end
 end

@@ -51,15 +51,6 @@ defmodule Secp256k1Test.ECDH do
     assert ECDH.ecdh(alice_seckey, bob_pubkey_uncompressed) == expected
   end
 
-  test "public delegate uses the ECDH module", %{
-    alice_seckey: alice_seckey,
-    bob_pubkey_compressed: bob_pubkey,
-    libsecp_shared_secret: expected
-  } do
-    assert Secp256k1.ecdh(alice_seckey, bob_pubkey) == ECDH.ecdh(alice_seckey, bob_pubkey)
-    assert Secp256k1.ecdh(alice_seckey, bob_pubkey) == expected
-  end
-
   test "returns libsecp256k1 default hashed output, not raw crypto ECDH", %{
     alice_seckey: alice_seckey,
     bob_pubkey_compressed: bob_pubkey_compressed,
@@ -81,8 +72,10 @@ defmodule Secp256k1Test.ECDH do
       ECDH.ecdh(<<1>>, bob_pubkey)
     end
 
-    assert_raise ArgumentError, fn ->
-      ECDH.ecdh(<<0::256>>, bob_pubkey)
+    curve_order = d("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141")
+
+    for seckey <- [<<0::256>>, curve_order, :binary.copy(<<255>>, 32)] do
+      assert_raise ArgumentError, fn -> ECDH.ecdh(seckey, bob_pubkey) end
     end
   end
 
