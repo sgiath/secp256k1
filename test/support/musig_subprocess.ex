@@ -6,25 +6,22 @@ defmodule Secp256k1Test.MuSigSubprocess do
   @deadline_ms 15_000
 
   @doc """
-  Evaluates `setup`, then `probe`, in a fresh BEAM that loads this build's code.
+  Evaluates `steps`, a list of `{setup, probe}` code strings, in order in one fresh BEAM that
+  loads this build's code. Bindings made by a setup stay visible to later steps.
 
-  The child prints `MUSIG_SUBPROCESS_PROBE` between the two, so an exception reported after
-  that line came from `probe`, not from `setup`. Returns `{output, exit_status}`. A child
-  still running after #{@deadline_ms} ms is killed and returns `{output, :timeout}`.
+  Before the `n`th probe (counting from 1) the child prints `MUSIG_SUBPROCESS_PROBE:n`, and
+  after it `MUSIG_SUBPROCESS_OK:n`, or `MUSIG_SUBPROCESS_ARGUMENT_ERROR:n:<message>` when the
+  probe raised `ArgumentError`. Any other exception, in a setup or a probe, halts the child
+  with status 2. Returns `{output, exit_status}`. A child still running after
+  #{@deadline_ms} ms is killed and returns `{output, :timeout}`.
   """
-  def run(setup, probe) when is_binary(setup) and is_binary(probe) do
+  def run(steps) when is_list(steps) and steps != [] do
     elixir = System.find_executable("elixir") || raise "elixir executable not found in PATH"
 
     code = """
     try do
-      #{setup}
-      IO.puts("MUSIG_SUBPROCESS_PROBE")
-      #{probe}
-      IO.puts("MUSIG_SUBPROCESS_OK")
+      #{steps |> Enum.with_index(1) |> Enum.map_join("\n", &step_code/1)}
     rescue
-      exception in ArgumentError ->
-        IO.puts("MUSIG_SUBPROCESS_ARGUMENT_ERROR:" <> Exception.message(exception))
-
       exception ->
         IO.puts("MUSIG_SUBPROCESS_EXCEPTION:" <> inspect(exception))
         System.halt(2)
@@ -48,6 +45,21 @@ defmodule Secp256k1Test.MuSigSubprocess do
     deadline = System.monotonic_time(:millisecond) + @deadline_ms
 
     collect(port, os_pid, deadline, [])
+  end
+
+  defp step_code({{setup, probe}, n}) when is_binary(setup) and is_binary(probe) do
+    """
+    #{setup}
+    IO.puts("MUSIG_SUBPROCESS_PROBE:#{n}")
+
+    try do
+      #{probe}
+      IO.puts("MUSIG_SUBPROCESS_OK:#{n}")
+    rescue
+      exception in ArgumentError ->
+        IO.puts("MUSIG_SUBPROCESS_ARGUMENT_ERROR:#{n}:" <> Exception.message(exception))
+    end
+    """
   end
 
   # Every `ebin` directory of the running build: this library and its dependencies.

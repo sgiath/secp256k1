@@ -8,44 +8,34 @@ defmodule Secp256k1.MuSigSubprocessTest do
 
   @tag :expensive
   test "formerly aborting malformed cache probes only raise in child BEAM" do
-    assert_subprocess_argument_error("", "Secp256k1.NIF.musig_pubkey_get(<<0::197*8>>)")
-
-    assert_subprocess_argument_error(
-      """
-      alias Secp256k1.MuSig
-      {seckey, pubkey} = Secp256k1.keypair(:compressed)
-      {:ok, _agg_xonly_pubkey, cache} = MuSig.pubkey_agg([pubkey])
-      msg = <<1::256>>
-      {:ok, _secnonce, pubnonce} = MuSig.nonce_gen(pubkey, seckey: seckey, msg: msg, cache: cache)
-      aggnonce = MuSig.nonce_agg([pubnonce])
-      """,
-      "Secp256k1.NIF.musig_nonce_process(aggnonce, msg, <<0::197*8>>)"
-    )
-
-    assert_subprocess_argument_error(
-      """
-      {seckey, pubkey} = Secp256k1.keypair(:compressed)
-      {:ok, _agg_xonly_pubkey, cache} = Secp256k1.MuSig.pubkey_agg([pubkey])
-      """,
-      "Secp256k1.NIF.musig_nonce_gen(seckey, nil, <<1::256>>, cache, nil)"
-    )
+    assert_subprocess_argument_errors([
+      {"", "Secp256k1.NIF.musig_pubkey_get(<<0::197*8>>)"},
+      {"""
+       alias Secp256k1.MuSig
+       {seckey, pubkey} = Secp256k1.keypair(:compressed)
+       {:ok, _agg_xonly_pubkey, cache} = MuSig.pubkey_agg([pubkey])
+       msg = <<1::256>>
+       {:ok, _secnonce, pubnonce} = MuSig.nonce_gen(pubkey, seckey: seckey, msg: msg, cache: cache)
+       aggnonce = MuSig.nonce_agg([pubnonce])
+       """, "Secp256k1.NIF.musig_nonce_process(aggnonce, msg, <<0::197*8>>)"},
+      {"", "Secp256k1.NIF.musig_nonce_gen(seckey, nil, <<1::256>>, cache, nil)"}
+    ])
   end
 
   @tag :expensive
   test "formerly aborting malformed session probe only raises in child BEAM" do
-    assert_subprocess_argument_error(
-      """
-      alias Secp256k1.MuSig
-      {seckey, pubkey} = Secp256k1.keypair(:compressed)
-      {:ok, _agg_xonly_pubkey, cache} = MuSig.pubkey_agg([pubkey])
-      msg = <<1::256>>
-      {:ok, secnonce, pubnonce} = MuSig.nonce_gen(pubkey, seckey: seckey, msg: msg, cache: cache)
-      aggnonce = MuSig.nonce_agg([pubnonce])
-      session = MuSig.nonce_process(aggnonce, msg, cache)
-      partial_sig = MuSig.partial_sign(secnonce, seckey, cache, session)
-      """,
-      "Secp256k1.NIF.musig_partial_sig_agg(<<0::133*8>>, [partial_sig])"
-    )
+    assert_subprocess_argument_errors([
+      {"""
+       alias Secp256k1.MuSig
+       {seckey, pubkey} = Secp256k1.keypair(:compressed)
+       {:ok, _agg_xonly_pubkey, cache} = MuSig.pubkey_agg([pubkey])
+       msg = <<1::256>>
+       {:ok, secnonce, pubnonce} = MuSig.nonce_gen(pubkey, seckey: seckey, msg: msg, cache: cache)
+       aggnonce = MuSig.nonce_agg([pubnonce])
+       session = MuSig.nonce_process(aggnonce, msg, cache)
+       partial_sig = MuSig.partial_sign(secnonce, seckey, cache, session)
+       """, "Secp256k1.NIF.musig_partial_sig_agg(<<0::133*8>>, [partial_sig])"}
+    ])
   end
 
   @tag :expensive
@@ -56,7 +46,6 @@ defmodule Secp256k1.MuSigSubprocessTest do
     {:ok, secnonce, pubnonce} = MuSig.nonce_gen(pubkey, seckey: seckey, msg: msg, cache: cache)
     session = session_for([pubnonce], msg, cache)
     terms = Enum.map([cache, secnonce, session], &serialize/1)
-    [cache_term, secnonce_term, session_term] = terms
 
     # In this VM the serialized handles decode to the live resources they were taken from. The
     # originals must stay referenced until decoded: if a GC frees one first, its handle is stale.
@@ -78,28 +67,32 @@ defmodule Secp256k1.MuSigSubprocessTest do
     session = MuSig.nonce_process(MuSig.nonce_agg([pubnonce]), msg, cache)
     """
 
-    assert_stale_resource_argument_error(cache_term, "", "MuSig.pubkey_get(stale)")
+    # Each handle is decoded before any child resource exists, so it cannot name one.
+    assert_subprocess_argument_errors([
+      {"""
+       alias Secp256k1.MuSig
+       [stale_cache, stale_secnonce, stale_session] =
+         Enum.map(#{inspect(terms)}, &(&1 |> Base.decode64!() |> :erlang.binary_to_term()))
 
-    assert_stale_resource_argument_error(
-      secnonce_term,
-      child_signer,
-      "MuSig.partial_sign(stale, seckey, cache, session)"
-    )
-
-    assert_stale_resource_argument_error(
-      session_term,
-      "",
-      ~s|MuSig.partial_sig_agg(stale, [Base.decode16!("#{Base.encode16(partial_sig)}")])|
-    )
+       true = Enum.all?([stale_cache, stale_secnonce, stale_session], &is_reference/1)
+       """, "MuSig.pubkey_get(stale_cache)"},
+      {child_signer, "MuSig.partial_sign(stale_secnonce, seckey, cache, session)"},
+      {"",
+       ~s|MuSig.partial_sig_agg(stale_session, [Base.decode16!("#{Base.encode16(partial_sig)}")])|}
+    ])
   end
 
-  # Runs `setup`, then `probe`, in a child BEAM. The probe marker before the `ArgumentError`
-  # marker proves the exception comes from the probed call, not from the setup.
-  defp assert_subprocess_argument_error(setup, probe) do
-    {output, status} = MuSigSubprocess.run(setup, probe)
+  # Runs `steps` in one child BEAM. Each probe's marker directly before its own `ArgumentError`
+  # marker proves the exception comes from that probed call, not from a setup or another probe.
+  defp assert_subprocess_argument_errors(steps) do
+    {output, status} = MuSigSubprocess.run(steps)
 
     assert status == 0, output
-    assert output =~ "MUSIG_SUBPROCESS_PROBE\nMUSIG_SUBPROCESS_ARGUMENT_ERROR", output
+
+    for n <- 1..length(steps) do
+      assert output =~ "MUSIG_SUBPROCESS_PROBE:#{n}\nMUSIG_SUBPROCESS_ARGUMENT_ERROR:#{n}:",
+             output
+    end
   end
 
   defp serialize(term) do
@@ -112,19 +105,5 @@ defmodule Secp256k1.MuSigSubprocessTest do
     serialized
     |> Base.decode64!()
     |> :erlang.binary_to_term()
-  end
-
-  # Decodes `serialized` as `stale` before any child resource exists, runs `setup`, then
-  # `probe`.
-  defp assert_stale_resource_argument_error(serialized, setup, probe) do
-    assert_subprocess_argument_error(
-      """
-      alias Secp256k1.MuSig
-      stale = "#{serialized}" |> Base.decode64!() |> :erlang.binary_to_term()
-      true = is_reference(stale)
-      #{setup}
-      """,
-      probe
-    )
   end
 end

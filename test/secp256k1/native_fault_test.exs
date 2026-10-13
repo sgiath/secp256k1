@@ -121,7 +121,7 @@ defmodule Secp256k1Test.NativeFault do
     end
     """
 
-    {output, status} = MuSigSubprocess.run(setup, probe)
+    {output, status} = MuSigSubprocess.run([{setup, probe}])
     assert status == 0, output
 
     cond do
