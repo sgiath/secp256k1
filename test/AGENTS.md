@@ -1,3 +1,4 @@
+- Which file a test belongs in follows the layer map in `../AGENTS.md` ("TEST LAYERS"): precise tests at the feature modules, child BEAMs only for crash boundaries and other VMs, facade tests only for what the facade adds.
 - Do not edit `vectors/*.csv` or `vectors/*.json` casually. Treat them as upstream snapshots; update `vectors/README.md` provenance (commit-pinned URL and source SHA256) if replacing them.
 - Do not weaken vector expectations to fit implementation behavior.
 - Do not remove subprocess tests around formerly aborting MuSig probes; they protect BEAM crash boundaries.

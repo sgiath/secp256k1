@@ -64,6 +64,25 @@ Elixir bindings for bitcoin-core `secp256k1` v0.7.1. The public Elixir facade de
 - Add an entry to `CHANGELOG.md` for every change that could be interesting to library users. Do not add test or docs changes to the changelog.
 - Follow upstream `libsecp256k1` instructions, docs, and examples in `c_src/secp256k1/`.
 
+## TEST LAYERS
+
+Each layer is tested at its own interface, and its tests run every layer below it for real; nothing is mocked. Only the fault-injection build replaces allocation and OS randomness, at the C boundary.
+
+| Layer   | Code                                                                                   | Adds                                                                                                                                         | Test files (`test/`)                                                                                                                                                                                                       |
+| ------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| native  | `c_src/*.c`, `c_src/*.h`, private `lib/secp256k1/nif.ex`                               | argument parsing, MuSig resources and transcript checks, callback guard, allocation and RNG error results                                    | `secp256k1/native_fault_test.exs` (fault build only); the crash-boundary probes in `secp256k1/musig_subprocess_test.exs`                                                                                                   |
+| feature | `lib/secp256k1/{ecdsa,schnorr,ecdh,extrakeys,musig,guards}.ex`                         | shape guards, random AUX/ndata for 2-arg signers (3-arg forms take it as an argument), dirty-scheduler dispatch, `nonce_gen/2` option checks | `secp256k1/{ecdsa,schnorr,ecdh,extrakeys,musig,musig_nonce_gen}_test.exs`, `secp256k1/property_test.exs`, vectors in `secp256k1/{schnorr_bip340,ecdsa_wycheproof,musig_vectors}_test.exs`                                  |
+| facade  | `lib/secp256k1.ex`                                                                     | `keypair/1,2`, `pubkey/2`, `convert_pubkey/2`; everything else is `defdelegate`                                                              | `secp256k1_test.exs` and the `Secp256k1` doctests                                                                                                                                                                          |
+| runtime | NIF load and upgrade (`nif.ex` `@on_load`, `nif.c` `load`/`upgrade`), processes, BEAMs | node-local resource lifetime, upgrade takeover, failed loads                                                                                 | `secp256k1/nif_lifecycle_test.exs`, `secp256k1/concurrency_test.exs`, the stale-handle test in `secp256k1/musig_subprocess_test.exs`, the load-fault and `NativeFaultResources` tests in `secp256k1/native_fault_test.exs` |
+
+The feature modules add only guards, randomness, and dispatch over the native layer, so they are the lowest public interface: put a precise test there by default. Where a new regression test goes:
+
+- Wrong result, error, or exception for some input: the feature test file of that function. A MuSig cross-process contract (one-use nonce) also stays in `secp256k1/musig_test.exs`.
+- An input the feature guards cannot pass that reaches `Secp256k1.NIF` directly: only if it could abort the VM, as one more step in a child BEAM in `secp256k1/musig_subprocess_test.exs` (see `test/AGENTS.md`).
+- Allocation or OS RNG failure, or a libsecp256k1 callback: `secp256k1/native_fault_test.exs`.
+- `keypair`, `pubkey`, or `convert_pubkey` dispatch, or a new delegate: `secp256k1_test.exs`; add a delegate as one row of the delegate table there.
+- Load, upgrade, concurrency, or resources across processes or BEAMs: the runtime files. Keep this layer thin; do not route feature assertions through it.
+
 ## ANTI-PATTERNS
 
 - Never reuse MuSig2 nonces. Call `Secp256k1.MuSig.nonce_gen/2` fresh for every signing attempt.
