@@ -119,7 +119,9 @@ defmodule Secp256k1Test do
     end
 
     # The randomized signers cannot be compared by value; their signatures must verify.
-    assert ECDSA.valid?(Secp256k1.ecdsa_sign(msg_hash, seckey), msg_hash, compressed)
-    assert Schnorr.valid?(Secp256k1.schnorr_sign(msg_hash, seckey), msg_hash, xonly)
+    ecdsa_signature = Secp256k1.ecdsa_sign(msg_hash, seckey)
+    assert ECDSA.valid?(ecdsa_signature, msg_hash, compressed)
+    schnorr_signature = Secp256k1.schnorr_sign(msg_hash, seckey)
+    assert Schnorr.valid?(schnorr_signature, msg_hash, xonly)
   end
 end

@@ -19,7 +19,8 @@ defmodule Secp256k1Test.NifLifecycle do
 
     # Live secret nonces and session created before the upgrade, signed with after it.
     signers = signers(2)
-    {:ok, live_xonly_pubkey, live_cache} = MuSig.pubkey_agg(Enum.map(signers, & &1.pubkey))
+    live_pubkeys = Enum.map(signers, & &1.pubkey)
+    {:ok, live_xonly_pubkey, live_cache} = MuSig.pubkey_agg(live_pubkeys)
     live_flow = start_signing(signers, message, live_cache)
 
     # A nonce consumed before the upgrade must stay consumed after it.
@@ -64,12 +65,12 @@ defmodule Secp256k1Test.NifLifecycle do
              live_flow.session
            ) == {:error, "nonce already used"}
 
-    assert Schnorr.valid?(finish_signing(live_flow), message, live_xonly_pubkey) == true
+    live_signature = finish_signing(live_flow)
+    assert Schnorr.valid?(live_signature, message, live_xonly_pubkey) == true
 
     fresh_signers = signers(2)
-
-    {:ok, fresh_xonly_pubkey, fresh_cache} =
-      MuSig.pubkey_agg(Enum.map(fresh_signers, & &1.pubkey))
+    fresh_pubkeys = Enum.map(fresh_signers, & &1.pubkey)
+    {:ok, fresh_xonly_pubkey, fresh_cache} = MuSig.pubkey_agg(fresh_pubkeys)
 
     signature = sign_with(fresh_signers, message, fresh_cache)
     assert Schnorr.valid?(signature, message, fresh_xonly_pubkey) == true

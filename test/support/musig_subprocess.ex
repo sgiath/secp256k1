@@ -18,9 +18,14 @@ defmodule Secp256k1Test.MuSigSubprocess do
   def run(steps) when is_list(steps) and steps != [] do
     elixir = System.find_executable("elixir") || raise "elixir executable not found in PATH"
 
+    steps_code =
+      steps
+      |> Enum.with_index(1)
+      |> Enum.map_join("\n", &step_code/1)
+
     code = """
     try do
-      #{steps |> Enum.with_index(1) |> Enum.map_join("\n", &step_code/1)}
+      #{steps_code}
     rescue
       exception ->
         IO.puts("MUSIG_SUBPROCESS_EXCEPTION:" <> inspect(exception))

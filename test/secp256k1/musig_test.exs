@@ -9,7 +9,8 @@ defmodule Secp256k1.MuSigTest do
   test "3-of-3 signing flow" do
     signers = signers(3)
     msg = :crypto.strong_rand_bytes(32)
-    {:ok, agg_xonly_pubkey, cache} = MuSig.pubkey_agg(Enum.map(signers, & &1.pubkey))
+    pubkeys = Enum.map(signers, & &1.pubkey)
+    {:ok, agg_xonly_pubkey, cache} = MuSig.pubkey_agg(pubkeys)
 
     signature = sign_with(signers, msg, cache)
 
